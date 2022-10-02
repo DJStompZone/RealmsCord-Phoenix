@@ -1,14 +1,14 @@
 {
-  "name": "realmscord-phoenix",
+  "name": "phoenix",
   "version": "1.0.0",
-  "description": "Connects your Minecraft Bedrock realm or server's game chat with a Discord channel using PrismarineJS's bedrock-protocol and discord.js",
+  "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node index.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "DJ Stomp#2525",
-  "license": "MIT",
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "axios": "^0.27.2",
     "bedrock-protocol": "^3.20.0",

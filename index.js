@@ -2,41 +2,43 @@ const axios = require("axios");
 const bedrock = require('bedrock-protocol')
 const chalk = require('chalk');
 const { Client, Intents, MessageEmbed, MessageAttachment, } = require("discord.js");
-const { realmName, realmId, verboseMessageEvents, attemptAutoConnect, token, channelId, clientId, guildId, botName} = require("./config.json");
+const { realmId, realmName, token, channelId, clientId, guildId, botName } = require("./config.json");
+const {
+    hasMentions,
+    chkMsg,
+    stringToColor,
+    fancyHash,
+    mcColor,
+    pktrgx,
+    ignorepackets,
+    logpaknames,
+    welcomeMessage,
+    conceptArt,
+    colormap
+} = require('./utils')
 const discordToken = token
+const realmid = realmId
 
-let realmid = realmId
-const realmargs = process.argv[2]?.toString() ?? "";
-if ((typeof parseInt(realmargs) === 'number') && (realmargs.length > 6)) { realmid = realmargs }
+function purple(txt) { return chalk.rgb(130, 20, 200).bold(txt) }
+function orange(txt) { return chalk.rgb(255, 130, 0).bold(txt) }
+function red(txt) { return chalk.rgb(225, 0, 0).bold(txt) }
+function green(txt) { return chalk.rgb(30, 225, 0).bold(txt) }
+function OPO(f, m, l) { console.log(orange(f) + " " + purple(m) + " " + orange(l)) }
+function POP(f, m, l) { console.log(purple(f) + " " + orange(m) + " " + purple(l)) }
+const hexColor = new RegExp(/^#[0-9a-f]{6}$/i)
 
-
-const pktrgx = new RegExp(/(entity|map|block|tick|level_chunk|update|inventory|sound|update_attributes)/)
-const emojex =  new RegExp(/<a?:[a-zA-Z0-9_]+:[0-9]+>/g)
-const ignorepackets = ["event", "set_time", "level_event", "mob_effect"]
-const logpaknames = pk = 1
-function rtest(t) { return !!pktrgx.exec(t) }
-const welcomeMessage = '§a§l§oRealmscord: Phoenix has been connected.§r'
-
-function hasMentions(st) {
-    const m = /<@[0-9]+>/.exec(st);
-    if (m?.length) {
-        return m[0];
+function fancyMSG(message, sender, title = null, image = null) {
+    let color = "#000000"
+    if (!!(sender)) {
+        color = hexColor.test(sender) ? sender : stringToColor(sender)
     }
-    return null;
+    const newEmbed = new MessageEmbed()
+        .setColor(color)
+        .setDescription(message);
+    if (title) { newEmbed.setTitle(title); }
+    if (image) { newEmbed.setImage(image); }
+    return newEmbed
 }
-
-function chkMsg(msg) {
-    let matches = [...msg.matchAll(emojex)];
-    if (!matches?.length) {
-        return msg;
-    }
-	let newMsg = `${msg}`
-    for (const i of Array(matches?.length ?? 0).keys()) {
-        newMsg = msg.replace(matches[i][0], `(${matches[i][0].split(":")[1].toLowerCase()} emoji)`);
-    }
-    return newMsg;
-}
-
 
 function logOrIgnore(packetname) {
     try {
@@ -44,71 +46,21 @@ function logOrIgnore(packetname) {
         if (rtest(packetname) === true) { return }
         if (ignorepackets.includes(packetname)) { return }
         OPO("Recieved a", packetname, "packet.")
-    } catch { }
+    } catch (e) { console.log(e) }
+}
+function rtest(t) {
+    return !!pktrgx.exec(t)
 }
 
-function purple(txt) { return chalk.rgb(130, 20, 200).bold(txt) }
-function orange(txt) { return chalk.rgb(255, 130, 0).bold(txt) }
-function OPO(f, m, l) { console.log(orange(f) + " " + purple(m) + " " + orange(l)) }
-function POP(f, m, l) { console.log(purple(f) + " " + orange(m) + " " + purple(l)) }
-
+function sanitizeString(str) {
+    str = str.replace(/[^0-9]/gim, '');
+    return str.trim()
+}
 
 class DiscBot {
     constructor() {
-        this.stringToColor = function (str) {
-            let hash = 0;
-            for (var i = 0; i < str.length; i++) {
-                hash = str.charCodeAt(i) + ((hash << 5) - hash);
-            }
-            let color = "#";
-            for (var i = 0; i < 3; i++) {
-                const value = (hash >> (i * 8)) & 0xff;
-                color += ("00" + value.toString(16)).substr(-2);
-            }
-            return color;
-        };
-        this.fancyHash = function (str) {
-            let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
-            for (let i = 0, k; i < str.length; i++) {
-                k = str.charCodeAt(i);
-                h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
-                h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
-                h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
-                h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
-            }
-            h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
-            h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
-            h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
-            h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
-            return [
-                (h1 ^ h2 ^ h3 ^ h4) >>> 0,
-                (h2 ^ h1) >>> 0,
-                (h3 ^ h1) >>> 0,
-                (h4 ^ h1) >>> 0,
-            ];
-        };
-        this.mcColor = function (str) {
-            const colormap = {
-                "0": "a",
-                "1": "1",
-                "2": "2",
-                "3": "4",
-                "4": "5",
-                "5": "6",
-                "6": "b",
-                "7": "c",
-                "8": "d"
-            };
-            const pick = this.fancyHash(str)[0].toString()[5];
-            if (parseInt(pick) === 8) {
-                return colormap["0"];
-            }
-            else if (parseInt(pick) === 9) {
-                return colormap["7"];
-            }
-            else
-                return colormap[pick];
-        };
+        this.connectionReady = false
+        this.client = null
         this.discordClient = new Client({
             intents: [
                 Intents.FLAGS.GUILDS,
@@ -116,141 +68,187 @@ class DiscBot {
                 Intents.FLAGS.GUILD_MEMBERS,
             ],
         });
-		this.getRealmClient = function () {
-		   return new Promise((resolve, reject) => {
-				setTimeout(()=>{
-					const c = bedrock.createClient({ realms: { realmId: realmid } })
-					resolve(c)
-				}, 1500)
-			})
-		}
-		this.handle_realm_message = function (source, message) {
-            try {
-                this.onRealmMessage({ sender: source, message: message })
-            } catch { }
+        this.getRealmClient = function () {
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    try {
+                        const c = bedrock.createClient({ connectTimeout: 15000, realms: { realmId: realmid } })
+                        resolve(c)
+                    } catch (e) { console.log(e); reject(e.message) }
+
+                }, 3000)
+            })
         }
-        this.client = null
-		this.getRealmClient().then((c)=>{
-			this.client = c
-			this.client.on('text', (packet) => {
-				try {
-					if ((packet.source_name != this.client.username) && (packet.type === "chat")) {
-						POP( "Got a realm message from", `${packet.source_name}:`, packet.message)
-						this.handle_realm_message(packet.source_name, packet.message)
-					}
-				} catch { }
-			})
-			this.client.on('packet', (packet) => { logOrIgnore(packet.data.name) })
-		})
-        
+        this.getRealmClient().then((c) => { this.client = c })
     }
-    onStartup() {		
-		let client = this.client
 
-		setTimeout(()=>{
-			const discordClient = this.discordClient;
-			discordClient.login(discordToken);
+    onStartup() {
+        // Minecraft client logic (Packet listeners)
+        setTimeout(() => {
+            this.client.on('text', (packet) => {
+                try {
+                    if ((packet.source_name != this.client.username) && (packet.type === "chat")) {
+                        POP("Game chat: message from", `${packet.source_name}:`, packet.message)
+                        try {
+                            this.handleMCMessage({ sender: packet.source_name, message: packet.message })
+                        } catch (e) { console.log(e) }
+                    }
+                } catch (e) { console.log(e) }
+            })
+            this.client.on('player_list', (packet) => {
+                try {
+                    let wasJoin = (packet.records.type === "add")
+                    let plrs = packet.records.records_count
+                    for (const i of Array(plrs).keys()){
+                        let pName = (!!wasJoin) ? packet.records.records[i].username:"A player"
+                        if (pName !== this.client.username){
+                            this.handleJoinLeave(pName, wasJoin)
+                        }
+                    }
+                } catch(e) { console.log(e) }
+            })
+            this.client.on('packet', (packet) => { logOrIgnore(packet.data.name) })
+            this.client.on('spawn', (packet) => {
+                this.connectionReady = true;
+            })
+            this.client.on('join', (packet) => {
+                this.connectionReady = true;
+            })
+        }, 5000)
+        setTimeout(() => {
+            // Checking for all-clear to send welcome message over the minecraft client...
+            if (this.connectionReady) {
+                console.log(green("Connection is ready! Sending welcome message..."))
+                this.broadcast(welcomeMessage);
+            } else {
+                console.log(orange("Connection is not ready! Waiting 5 more seconds before trying again..."))
+                setTimeout(() => {
+                    if (this.connectionReady) {
+                        console.log(green("Connection is ready! Sending welcome message..."))
+                        this.broadcast(welcomeMessage);
+                    } else {
+                        console.log(red("Connection is still not ready! Aborting welcome messag!"))
+                    }
+                }, 5000)
+            }
+        }, 6000)
 
-			discordClient.on("ready", async () => {
-				const guild = await discordClient.guilds.fetch(guildId);
-				console.info("RealmsCord: Phoenix - Discord discordClient Ready, setting activity...");
-				discordClient.user.setActivity(`over ${realmName}`, { type: "WATCHING" });
-				console.info("RealmsCord: Phoenix - Activity set.");
-				console.info(`Now bridged with Discord as ${discordClient.user.username}`);
-				const fancyStartMSG = new MessageEmbed()
-					.setColor("#139dbf")
-					.setTitle("Realmscord: Phoenix")
-					.setDescription(`**${realmName}'s chat has been bridged with Discord**`)
-					.setImage('https://i.imgur.com/FJ4yR0P.png');
-				discordClient.channels.fetch(channelId).then(async (channel) => await channel
-					.send({ embeds: [fancyStartMSG] })
-					.then((msg) => {
-						setTimeout(() => msg.delete(), 300000);
-					})
-					.catch((error) => {
-						console.error(error);
-					}));
-				this.onBroadcast(welcomeMessage);
-			});
+        // Discord Client Logic
+        const discordClient = this.discordClient;
+        discordClient.login(discordToken);
 
-			discordClient.on("messageCreate", (message) => {
-				const msgAuthor = message?.author?.username ?? null;
-				if (!(message.author.id === clientId || message.content.length === 0 || [null, undefined, ""].includes(msgAuthor) || message.channel.id !== channelId)) {
-					this.onDiscordMessage(message);
-				}
-			});
-		}, 2000)
+        discordClient.on("ready", async () => {
+            const guild = await discordClient.guilds.fetch(guildId);
+            console.info("RealmsCord: Phoenix - Discord client ready, setting activity...");
+            discordClient.user.setActivity(`over ${realmName}`, { type: "WATCHING" });
+            console.info(`RealmsCord: Phoenix - Activity set.Connected to Discord as ${discordClient.user.username}`);
+            // Send an embed in the designated discord channel 
+            const fancyStartMSG = fancyMSG(`**${realmName}'s chat has been bridged with Discord**`, "#139dbf", "RealmsCord: Phoenix", conceptArt)
+            discordClient.channels.fetch(channelId).then(async (channel) => await channel
+                .send({ embeds: [fancyStartMSG] })
+                .then((msg) => {
+                    setTimeout(() => msg.delete(), 300000);
+                })
+                .catch((error) => {
+                    console.error(error);
+                }));
+        });
+
+        discordClient.on("messageCreate", (message) => {
+            const msgAuthor = message?.author?.username ?? "";
+            try {
+                // Stop early if the message isn't in our bot channel
+                if (message.channel.id !== channelId) { return }
+                // Make sure it's not a message we just sent, an empty string, undefined, or authorless
+                if (!(message.author.id === clientId || message.content.length === 0 || [null, undefined, ""].includes(msgAuthor))) {
+                    this.handleDiscordMessage(message);
+                }
+            } catch (e) { console.log(e) }
+        });
     }
-	
-    async onRealmMessage(packet) {
+
+    // Parse messages coming from the game chat and relay to discord
+    async handleMCMessage(packet) {
         try {
-            const messageRanks = "";
-            if (verboseMessageEvents && packet.sender) {
-                console.info(`New realm message: [${packet.sender}]: "${packet.message}"`);
-            }
             let playerMessage = "";
-            if (packet.sender) {
-                playerMessage += `<**${packet.sender}**> ${packet.message}`;
-            }
+            let sender = packet?.sender ?? ""
+            // Handles messages where the player used /me
+            if (!(sender)) { playerMessage += `<**${packet.message.substr(2)}**>`; }
             else {
-                playerMessage += `<**${packet.message.substr(2)}**>`;
-            }
-            const fancyMSG = new MessageEmbed()
-                .setColor(this.stringToColor(packet.sender))
-                .setDescription(playerMessage);
+                playerMessage += `<**${sender}**> ${packet.message}`
+            };
+            let embedMsg = fancyMSG(playerMessage, sender)
             await this.discordClient.channels
                 .fetch(channelId)
-                .then(async (channel) => await channel.send({ embeds: [fancyMSG] }))
+                .then(async (channel) => await channel.send({ embeds: [embedMsg] }))
                 .catch((error) => {
                     console.error(error);
                 });
         } catch (er) { console.error(er.message) }
     }
-	
-    async onDiscordMessage(message) {
-        const msgAuthor = message?.author?.username ?? null;
+
+    // Send a discord message when players join or leave
+    async handleJoinLeave(pName, wasJoin=true) {
+        try {
+            let msgColor = (!!wasJoin) ? "#10EE20":"#DD1010"
+            let action = (!!wasJoin) ? "connected to":"disconnected from"
+            let joinMessage = `${pName} has ${action} ${realmName}`
+            let embedMsg = fancyMSG(joinMessage, msgColor)
+            await this.discordClient.channels
+                    .fetch(channelId)
+                    .then(async (channel) => await channel.send({ embeds: [embedMsg] }))
+                    .catch((error) => {
+                        console.error(error);
+                    });
+        } catch (er) { console.error(er.message) }
+    }
+
+    // Parse messages coming from discord
+    async handleDiscordMessage(message) {
+        const msgAuthor = message?.author?.username ?? "";
         let msg = message.content;
         const mentions = hasMentions(msg);
         const hasInvalid = !/^[\u0000-\u007f]*$/.test(msg);
         if (hasInvalid) {
-            console.info(`Dropping message from [${msgAuthor}] with invalid characters`);
+            console.info(`Discarding message from [${msgAuthor}] with invalid characters`);
             return;
         }
-        if (mentions) {
-            const usrid = mentions.replace("<@", "").replace(">", "");
-            const user = await this.discordClient.users.fetch(usrid);
-            msg = message.content.replace(mentions, user.username);
+        if (mentions) { // TODO: parse out multiple mentions
+            try {
+                const usrid = sanitizeString(mentions)
+                const user = await this.discordClient.users.fetch(usrid);
+                msg = message.content.replace(mentions, user.username);
+            } catch (e) { console.log(e) }
         }
-        if (verboseMessageEvents) {
-            console.info(`New Discord message - [${msgAuthor}]: "${message.content}"`);
-        }
-        await this.onBroadcast(`${msg}`, msgAuthor);
-        
+        await this.broadcast(`${msg}`, msgAuthor);
     }
-    async onBroadcast(messageEvent, msgAuthor) {
-		let client = this.client
-        let msg = `${chkMsg(messageEvent)}`;
-        let nameColor;
-        if (msgAuthor) {
-            nameColor = `§${this.mcColor(msgAuthor)}` ?? "";
-            msg = `§8[§9Discord§8]§f ${nameColor}${msgAuthor}§f§r: ${msg}`;
+
+    // Dispatch messages to the game chat
+    async broadcast(messageEvent, msgAuthor) {
+        if (!(this.connectionReady)) {
+            console.log(`Tried to broadcast to the realm/server before it was ready. \nCanceling message: ${messageEvent}`)
+            return
         }
-		let pause = messageEvent===welcomeMessage?5000:50
-		let bot_name = ""
-		if ([null, undefined, ""].includes(client.username)){
-			bot_name = botName
-		} else { bot_name = client.username }
-		setTimeout(()=>{
-			POP("Attempting to send discord message:", msg, "to the realm client...")
-			client.queue('text', {
-				type: 'chat',
-				needs_translation: false,
-				source_name: bot_name,
-				xuid: '',
-				platform_chat_id: '',
-				message: msg
-			})
-		}, pause)
+        let client = this.client
+        let msg = `${chkMsg(messageEvent)}`;
+        let nameColor = "§f"
+        let maybeAuthor = ""
+        let bot_name = botName
+        if (msgAuthor) {
+            nameColor = `§${mcColor(msgAuthor)}`;
+            msg = `§8[§9Discord§8]§f ${nameColor}${msgAuthor}§f§r: ${msg}`;
+            maybeAuthor = " from ${msgAuthor}"
+        }
+        if (!([null, undefined, ""].includes(client?.username))) { bot_name = client.username }
+        POP(`Got Discord message${maybeAuthor}:`, msg, "Relaying to the minecraft client...")
+        client.queue('text', {
+            type: 'chat',
+            needs_translation: false,
+            source_name: bot_name,
+            xuid: '',
+            platform_chat_id: '',
+            message: msg
+        })
     }
 }
 
