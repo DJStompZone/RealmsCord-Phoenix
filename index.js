@@ -72,7 +72,7 @@ class DiscBot {
             return new Promise((resolve, reject) => {
                 setTimeout(() => {
                     try {
-                        const c = bedrock.createClient({ connectTimeout: 15000, realms: { realmId: realmid } })
+                        const c = bedrock.createClient({ connectTimeout: 15000, host: bedrock.slownerd.ninja, port: 19132, username: SlowNerdChat542 })
                         resolve(c)
                     } catch (e) { console.log(e); reject(e.message) }
 
