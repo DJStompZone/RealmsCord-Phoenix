@@ -2,7 +2,7 @@ const axios = require("axios");
 const bedrock = require('bedrock-protocol')
 const chalk = require('chalk');
 const { Client, Intents, MessageEmbed, MessageAttachment, } = require("discord.js");
-const { realmId, realmName, token, channelId, clientId, guildId, botName } = require("./config.json");
+const { realmId, realmName, token, channelId, clientId, guildId, botName, useServer, host, port } = require("./config.json");
 const {
     hasMentions,
     chkMsg,
@@ -72,7 +72,11 @@ class DiscBot {
             return new Promise((resolve, reject) => {
                 setTimeout(() => {
                     try {
-                        const c = bedrock.createClient({ connectTimeout: 15000, host: bedrock.slownerd.ninja, port: 19132, username: SlowNerdChat542 })
+                        var connection = { connectTimeout: 15000, realms: { realmId: realmid } }
+                        if(useServer){
+                            connection = { connectTimeout: 15000, host: host, port: port }
+                        }
+                        const c = bedrock.createClient(connection)
                         resolve(c)
                     } catch (e) { console.log(e); reject(e.message) }
 
