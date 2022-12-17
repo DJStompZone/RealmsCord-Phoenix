@@ -5,5 +5,8 @@
 	"token": "y0URd1sC0rDtOKenG03sH3R3.-ex4mpLEt0k3n69420",
 	"realmName": "Your Realm Name",
 	"realmId": 12345678,
-        "botName": "YourBot"
+    "botName": "YourBot",
+	"useServer": true,
+	"host": "Server IP", 
+	"port": 19132
 }
