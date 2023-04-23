@@ -236,7 +236,7 @@ class DiscBot {
         let bot_name = botName
         if (msgAuthor) {
             nameColor = `§${mcColor(msgAuthor)}`;
-            msg = `§8[§9Discord§8]§f ${nameColor}${msgAuthor}§f§r: ${msg}`;
+            msg = `§8[§9Discord§8]§f §r<${nameColor}${msgAuthor}§r>§f: ${msg}`;
             maybeAuthor = " from ${msgAuthor}"
         }
         if (!([null, undefined, ""].includes(client?.username))) { bot_name = client.username }
