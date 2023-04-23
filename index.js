@@ -139,11 +139,11 @@ class DiscBot {
 
         discordClient.on("ready", async () => {
             const guild = await discordClient.guilds.fetch(guildId);
-            console.info("RealmsCord: Phoenix - Discord client ready, setting activity...");
+            console.info("Blossomcord - Discord client ready, setting activity...");
             discordClient.user.setActivity(`over ${realmName}`, { type: "WATCHING" });
-            console.info(`RealmsCord: Phoenix - Activity set.Connected to Discord as ${discordClient.user.username}`);
+            console.info(`Blossomcord - Activity set.Connected to Discord as ${discordClient.user.username}`);
             // Send an embed in the designated discord channel 
-            const fancyStartMSG = fancyMSG(`**${realmName}'s chat has been bridged with Discord**`, "#139dbf", "RealmsCord: Phoenix", conceptArt)
+            const fancyStartMSG = fancyMSG(`**${realmName}'s chat has been bridged with Discord**`, "#139dbf", "Blossomcord", conceptArt)
             discordClient.channels.fetch(channelId).then(async (channel) => await channel
                 .send({ embeds: [fancyStartMSG] })
                 .then((msg) => {
