@@ -100,7 +100,7 @@ class DiscBot {
                     let wasJoin = (packet.records.type === "add")
                     let plrs = packet.records.records_count
                     for (const i of Array(plrs).keys()){
-                        let pName = (!!wasJoin) ? packet.records.records[i].username:"A player"
+                        let pName = (!!wasJoin) ? packet.records.records[i].username:`${pName}`
                         if (pName !== this.client.username){
                             this.handleJoinLeave(pName, wasJoin)
                         }
