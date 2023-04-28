@@ -100,8 +100,8 @@ class DiscBot {
                     let wasJoin = (packet.records.type === "add")
                     let plrs = packet.records.records_count
                     for (const i of Array(plrs).keys()){
-                        let pName = (!!wasJoin) ? packet.records.records[i].username:"A player"
-                        if (pName !== this.client.username){
+                        let pName = (!!wasJoin) ? packet.records.records[i].username: "A player"
+                        if (pName !== this.client.username) {
                             this.handleJoinLeave(pName, wasJoin)
                         }
                     }
@@ -139,11 +139,11 @@ class DiscBot {
 
         discordClient.on("ready", async () => {
             const guild = await discordClient.guilds.fetch(guildId);
-            console.info("RealmsCord: Phoenix - Discord client ready, setting activity...");
+            console.info("Blossomcord - Discord client ready, setting activity...");
             discordClient.user.setActivity(`over ${realmName}`, { type: "WATCHING" });
-            console.info(`RealmsCord: Phoenix - Activity set.Connected to Discord as ${discordClient.user.username}`);
+            console.info(`Blossomcord - Activity set.Connected to Discord as ${discordClient.user.username}`);
             // Send an embed in the designated discord channel 
-            const fancyStartMSG = fancyMSG(`**${realmName}'s chat has been bridged with Discord**`, "#139dbf", "RealmsCord: Phoenix", conceptArt)
+            const fancyStartMSG = fancyMSG(`**${realmName}'s chat has been bridged with Discord**`, "#139dbf", "Blossomcord", conceptArt)
             discordClient.channels.fetch(channelId).then(async (channel) => await channel
                 .send({ embeds: [fancyStartMSG] })
                 .then((msg) => {
@@ -236,7 +236,7 @@ class DiscBot {
         let bot_name = botName
         if (msgAuthor) {
             nameColor = `§${mcColor(msgAuthor)}`;
-            msg = `§8[§9Discord§8]§f ${nameColor}${msgAuthor}§f§r: ${msg}`;
+            msg = `§8[§9Discord§8]§f §r<${nameColor}${msgAuthor}§r>§f: ${msg}`;
             maybeAuthor = " from ${msgAuthor}"
         }
         if (!([null, undefined, ""].includes(client?.username))) { bot_name = client.username }

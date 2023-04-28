@@ -77,8 +77,8 @@ const pktrgx = new RegExp(/(entity|map|block|tick|level_chunk|update|inventory|s
 
 const ignorepackets = ["event", "set_time", "mob_equipment", "mob_effect", "set_last_hurt_by", "animate", "move_player", "set_title"]
 const logpaknames = 0
-const welcomeMessage = '§a§l§oRealmscord: Phoenix has been connected.§r'
-const conceptArt = "https://i.imgur.com/FJ4yR0P.png"
+const welcomeMessage = '§d§l§oBlossomcord has been connected.§r'
+const conceptArt = ""
 const colormap = {
     "0": "a",
     "1": "1",
