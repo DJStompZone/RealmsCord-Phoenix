@@ -1,30 +1,35 @@
-const axios = require("axios");
-const bedrock = require("bedrock-protocol");
-const fs = require("fs");
-const path = require("path");
-var util = require("util");
-const { Authflow } = require("prismarine-auth");
-const { RealmAPI } = require("prismarine-realms");
-const crypto = require("crypto");
+import request from "axios";
+import bedrock from "bedrock-protocol";
+// import createClient from "bedrock-protocol"
+import { readFileSync, createWriteStream, existsSync, writeFileSync } from "fs";
+import { join } from "path";
+import { format } from "util";
+import { Authflow } from "prismarine-auth";
+import { RealmAPI } from "prismarine-realms";
+import { generateKeyPairSync } from "crypto";
 const curve = "secp384r1";
-const {
+import {
   Client,
   GatewayIntentBits,
   EmbedBuilder,
   version,
-} = require("discord.js");
+  TextChannel,
+  ChannelType,
+  DMChannel,
+  NewsChannel,
+} from "discord.js";
 console.log(version);
-const config = JSON.parse(fs.readFileSync("./config.json"));
+const config = JSON.parse(readFileSync("./config.json").toString());
 const MessageEmbed = EmbedBuilder;
-const pm2 = require("pm2");
+import { restart } from "pm2";
 const chatOffset = 10240;
 const bootTimeDay = Math.floor(new Date().getTime() / 60 / 60000 / 24);
 const todaysLog = `./logs/phoenix_${bootTimeDay.toString()}.log`;
 const todaysErrorLog = `./logs/phoenix_err_${bootTimeDay.toString()}.log`;
-const logAccess = fs.createWriteStream(todaysLog, {
+const logAccess = createWriteStream(todaysLog, {
   flags: "a",
 });
-const logErrorAccess = fs.createWriteStream(todaysErrorLog, {
+const logErrorAccess = createWriteStream(todaysErrorLog, {
   flags: "a",
 });
 let lastLogMessage = "";
@@ -34,8 +39,8 @@ let Configuration, OpenAIApi, openai, apiKey;
 try {
   ({ Configuration, OpenAIApi } = require("openai"));
 
-  if (fs.existsSync("./openaikey")) {
-    apiKey = fs.readFileSync("./openaikey", "utf8");
+  if (existsSync("./openaikey")) {
+    apiKey = readFileSync("./openaikey", "utf8");
     const configuration = new Configuration({
       apiKey: apiKey,
     });
@@ -48,11 +53,10 @@ try {
   console.error("An error occurred while attempting to load OpenAI");
 }
 
-const { playerDied } = require("./translate");
-console.log = function (d) {
+import { playerDied } from "./translate";
+console.log = function (/** @type {any} */ d) {
   let now = new Date();
-  let log_format =
-    `[${now.toTimeString().split(" ")[0]}] ` + util.format(d) + "\n";
+  let log_format = `[${now.toTimeString().split(" ")[0]}] ` + format(d) + "\n";
   lastLogMessage = log_format;
   logAccess.write(log_format);
   process.stdout.write(log_format);
@@ -63,13 +67,13 @@ process.on("uncaughtException", function (err) {
   console.log(err && err.stack ? err.stack : err);
   let log_format =
     `[${now.toTimeString().split(" ")[0]}] ` +
-    util.format(err && err.stack ? err.stack : err) +
+    format(err && err.stack ? err.stack : err) +
     "\n";
   logErrorAccess.write(log_format);
   lastLogMessage = log_format;
 });
 
-const {
+import {
   logpaknames,
   welcomeMessage,
   conceptArt,
@@ -94,11 +98,31 @@ const {
   sanitizeString,
   getDevice,
   filterDevice,
-} = require("./utils");
-
+} from "./utils";
+import axios from "axios";
+/**
+ * @typedef {Object} PlayerRecord
+ * @property {Object} entity_unique_id
+ * @property {function(): any} entity_unique_id.toString
+ * @property {*} platform_chat_id
+ * @property {*} is_teacher
+ * @property {*} is_host
+ * @property {*} skin_data
+ * @property {Object} build_platform
+ * @property {function(): any} build_platform.toString
+ * @property {string|number} uuid
+ * @property {string} username
+ */
 const discordToken = config.token;
-const realmid = config.realmId;
+const realmid = config?.realmId ?? null;
+const serverIp = config?.serverIp ?? null;
 
+const isRealm = !!realmid && !serverIp;
+
+/**
+ * @param {string} message
+ * @param {string} sender
+ */
 function fancyMSG(
   message,
   sender,
@@ -121,7 +145,7 @@ function fancyMSG(
 }
 
 let dontDoAutomod = true; // Don't use no double negatives
-if (config.realmId === 13036820) {
+if (config?.realmId === 13036820) {
   dontDoAutomod = true;
 }
 
@@ -130,8 +154,12 @@ let connectionReady = false;
 class DiscBot {
   constructor() {
     this.reset();
+    this.isRealm = null;
   }
   reset() {
+    /**
+     * @type {{ name: any; lastfm: any; }[]}
+     */
     this.fmplayers = [];
     this.connectionReady = false;
     this.client = null;
@@ -143,28 +171,38 @@ class DiscBot {
         GatewayIntentBits.DirectMessages,
       ],
     });
-    this.keypair = crypto
-      .generateKeyPairSync("ec", {
-        namedCurve: curve,
-      })
-      .toString("base64");
+    this.keypair = generateKeyPairSync("ec", {
+      namedCurve: curve,
+    }).toString();
     this.flow = new Authflow();
     this.flow.getMsaToken();
+    if (!!config?.realmId || !!config?.serverIp) {
+      throw new Error(
+        "Required configuration value missing: either realmId or serverIp must be set in config.json"
+      );
+    }
+    if (!!config?.realmId && !!config?.serverIp) {
+      throw new Error(
+        "Required configuration: realmId or serverIp should be set in config, not both."
+      );
+    }
     this.prealmapi = RealmAPI.from(this.flow, "bedrock");
-    this.restrealm = async function () {
-      const rr = await this.prealmapi.getRealm(config.realmId);
-      return await rr;
-    };
-    this.getRealmClient = function () {
+    this.getGameClient = function () {
       return new Promise((resolve, reject) => {
+        let c;
         setTimeout(() => {
           try {
-            //const c = bedrock.createClient({ connectTimeout: 15000, version: '1.19.50', realms: { realmId: realmid } });
-            const c = bedrock.createClient({
+            //const c = bedrock.createClient({version: '1.21.40'});
+            c = bedrock.createClient({
               connectTimeout: 15000,
-              realms: {
-                realmId: realmid,
-              },
+              realms: !isRealm
+                ? null
+                : {
+                    realmId: realmid ?? config?.realmId,
+                  },
+              username: isRealm ? null : config?.botName ?? null,
+              host: isRealm ? null : config?.serverIp ?? "127.0.0.1",
+              port: isRealm ? null : config?.serverPort ?? 0,
             });
             resolve(c);
           } catch (e) {
@@ -174,7 +212,7 @@ class DiscBot {
         }, 4020);
       });
     };
-    this.getRealmClient().then(
+    this.getGameClient().then(
       (c) => {
         this.client = c;
       },
@@ -183,27 +221,39 @@ class DiscBot {
       }
     );
     this.authorizedAdmins = config?.authorizedAdmins ?? [];
-    this.players = JSON.parse(fs.readFileSync("./players.json"));
-    this._whitelist = JSON.parse(fs.readFileSync("./whitelist.json"));
+    this.players = JSON.parse(readFileSync("./players.json").toString());
+    this._whitelist = JSON.parse(readFileSync("./whitelist.json").toString());
     this.prefix = commandPrefix;
-    this.fmPath = path.join(__dirname, "fm.json");
-    if (!fs.existsSync(this.fmPath)) {
+    this.fmPath = join(__dirname, "fm.json");
+    if (!existsSync(this.fmPath)) {
       const defaultContent = {
         players: [],
       };
 
-      fs.writeFileSync(this.fmPath, JSON.stringify(defaultContent, null, 2));
+      writeFileSync(this.fmPath, JSON.stringify(defaultContent, null, 2));
     }
     this.loadPlayersFM();
   }
+
+  async restrealm() {
+    const rr = config?.realmId
+      ? await this.prealmapi.getRealm(config.realmId)
+      : null;
+    this.isRealm = !!(rr || isRealm === true);
+    return rr;
+  }
   loadPlayersFM() {
-    const fileContent = fs.readFileSync(this.fmPath, "utf-8");
+    const fileContent = readFileSync(this.fmPath, "utf-8");
     const jsonContent = JSON.parse(fileContent);
 
     if (jsonContent.players) {
       this.fmplayers = jsonContent.players;
     }
   }
+  /**
+   * @param {any} playerName
+   * @param {string} lastFM
+   */
   updatePlayerFM(playerName, lastFM) {
     const existingPlayerIndex = this.fmplayers.findIndex(
       (player) => player.name === playerName
@@ -222,27 +272,24 @@ class DiscBot {
       players: this.fmplayers,
     };
 
-    fs.writeFileSync(this.fmPath, JSON.stringify(updatedContent, null, 2));
+    writeFileSync(this.fmPath, JSON.stringify(updatedContent, null, 2));
   }
 
+  /**
+   * @param {any} playerName
+   */
   getLastFM(playerName) {
     const player = this.fmplayers.find((player) => player.name === playerName);
     return player ? player.lastfm : null;
   }
 
   get whitelist() {
-    this._whitelist = JSON.parse(fs.readFileSync("./whitelist.json"));
+    this._whitelist = JSON.parse(readFileSync("./whitelist.json").toString());
     return this._whitelist;
   }
   set whitelist(value) {
     this._whitelist = value;
-    fs.writeFileSync(
-      "./whitelist.json",
-      JSON.stringify(value, null, 4),
-      (e) => {
-        console.log(e);
-      }
-    );
+    writeFileSync("./whitelist.json", JSON.stringify(value, null, 4));
   }
   xbotAuth() {
     return new Promise((resolve, reject) => {
@@ -272,10 +319,46 @@ class DiscBot {
     });
   }
   async numActivePlayers() {
-    const rr = await this.restrealm();
-    const np = await rr.players?.filter((e) => e.online).length;
-    return np;
+    const rest_realm = this?.restrealm ? await this?.restrealm() : null;
+    if (rest_realm) {
+      const np = await rest_realm.players?.filter((e) => e.online).length;
+      return np;
+    }
   }
+  async sendOnlineEmbed() {
+    const fancyStartMSG = fancyMSG(
+      `**${config.worldName}'s chat has been bridged with Discord**`,
+      "#139dbf",
+      "RealmsCord: Phoenix",
+      conceptArt
+    );
+    this.discordClient.channels
+      .fetch(config.channelId)
+      .then(async (channel) => {
+        if (channel?.type === ChannelType.GuildText) {
+          await channel
+            .send({
+              embeds: [fancyStartMSG],
+            })
+            .then((msg) => {
+              setTimeout(async () => {
+                try {
+                  msg.fetch().then((mssg) => {
+                    mssg.delete();
+                  });
+                } catch (error) {
+                  console.error("Failed to delete message:", error);
+                }
+              }, 5000);
+            });
+        }
+      });
+  }
+  /**
+   * @param {string} useLanguage
+   * @param {string} useVersion
+   * @param {string} content
+   */
   async runCode(useLanguage, useVersion, content) {
     let data = JSON.stringify({
       language: useLanguage,
@@ -302,7 +385,7 @@ class DiscBot {
     };
 
     try {
-      const response = await axios.request(requestData);
+      const response = await request(requestData);
       const output = response?.data?.run?.output || "No output.";
       return `\`\`\`\n${output}\n\`\`\``;
     } catch (error) {
@@ -314,116 +397,130 @@ class DiscBot {
     // Minecraft client logic (Packet listeners)
     try {
       setTimeout(() => {
-        this.client.on("text", (packet) => {
-          if (packet?.source_name === this.client.username) {
-            return;
-          }
-          try {
-            switch (packet.type) {
-              case textPacketTypes[1]: // "translation" text packet
-                try {
-                  console.log("Translation packet message: " + packet.message);
-                  if (packet.parameters) {
+        this.client.on(
+          "text",
+          (
+            /** @type {{ source_name: any; type: any; message: string | any[]; parameters: any[]; parameters_length: number; }} */ packet
+          ) => {
+            if (packet?.source_name === this.client.username) {
+              return;
+            }
+            try {
+              switch (packet.type) {
+                case textPacketTypes[1]: // "translation" text packet
+                  try {
                     console.log(
-                      "Translation packet params: " +
-                        JSON.stringify(packet.parameters)
+                      "Translation packet message: " + packet.message
                     );
+                    if (packet.parameters) {
+                      console.log(
+                        "Translation packet params: " +
+                          JSON.stringify(packet.parameters)
+                      );
+                    }
+                    this.handleTranslation(
+                      packet.message.toString(),
+                      packet?.parameters_length,
+                      packet?.parameters,
+                      packet
+                    );
+                  } catch (e) {
+                    console.log(e);
                   }
-                  this.handleTranslation(
-                    packet.message,
-                    packet?.parameters_length,
-                    packet?.parameters,
-                    packet
-                  );
-                } catch (e) {
-                  console.log(e);
-                }
-                break;
-              case textPacketTypes[0]: // "chat" text packet {
-                try {
-                  let prefixes = [this.prefix, "."];
-                  let parsed = handleCSZE(packet?.message);
-                  if (
-                    packet?.message?.length > 0 &&
-                    prefixes?.includes(parsed.message[0]) &&
-                    commandNames.includes(parsed.message.split(" ")[0].slice(1))
-                  ) {
-                    this.handleCommand(
-                      packet?.source_name,
-                      parsed.message.slice(1)
-                    );
-                  } else {
+                  break;
+                case textPacketTypes[0]: // "chat" text packet {
+                  try {
+                    let prefixes = [this.prefix, "."];
+                    let parsed = handleCSZE(packet?.message);
+                    if (
+                      packet?.message?.length > 0 &&
+                      prefixes?.includes(parsed.message[0]) &&
+                      commandNames.includes(
+                        parsed.message.split(" ")[0].slice(1)
+                      )
+                    ) {
+                      this.handleCommand(
+                        packet?.source_name,
+                        parsed.message.slice(1)
+                      );
+                    } else {
+                      this.handleMCMessage({
+                        sender: packet?.source_name,
+                        message: packet?.message,
+                      });
+                      if (
+                        typeof openai !== "undefined" &&
+                        panTest(parsed.message)
+                      ) {
+                        this.panHandle(packet.source_name, parsed.message);
+                      }
+                    }
+                  } catch (e) {
+                    console.log(e);
+                  }
+                  break;
+                case textPacketTypes[6]: // "whisper" text packet
+                case textPacketTypes[7]: // "announcement" text packet
+                  try {
                     this.handleMCMessage({
                       sender: packet?.source_name,
                       message: packet?.message,
                     });
-                    if (
-                      typeof openai !== "undefined" &&
-                      panTest(parsed.message)
-                    ) {
-                      this.panHandle(packet.source_name, parsed.message);
-                    }
+                  } catch (e) {
+                    console.log(e);
+                  }
+                  break;
+                case textPacketTypes[8]: // "JSON Whisper" text packet
+                case textPacketTypes[9]: // "JSON" text packet
+                case textPacketTypes[10]: // "JSON Announcement" text packet
+                  OPO("Got a", `${packet.type} text packet:`, packet.message);
+                  break;
+                default: // Popup, Jukebox Popup, Tip, System, Raw
+                  if (logpaknames === 1) {
+                    OPO("Text packet was", packet.type, "type");
+                  }
+              }
+            } catch (e) {
+              console.log(e);
+            }
+          }
+        );
+        this.client.on(
+          "player_list",
+          async (
+            /** @type {{ records: { type: string; records_count: any; records: any[]; }; }} */ packet
+          ) => {
+            try {
+              let wasJoin = packet.records.type === "add";
+              let plrs = packet.records.records_count;
+              for (const i of Array(plrs).keys()) {
+                try {
+                  let thisPlayer = packet.records.records[i];
+                  let pData = !!wasJoin
+                    ? await this.addPlayer(thisPlayer)
+                    : this.players[thisPlayer.uuid];
+                  // console.log(`Player connecting, data:${packet.records.records[ i ]}}`);
+                  let pName =
+                    (await pData?.username) ??
+                    `Unknown Player: ${thisPlayer.uuid}`;
+                  if (pName !== this.client.username) {
+                    this.handleJoinLeave(pName, wasJoin);
                   }
                 } catch (e) {
                   console.log(e);
                 }
-                break;
-              case textPacketTypes[6]: // "whisper" text packet
-              case textPacketTypes[7]: // "announcement" text packet
-                try {
-                  this.handleMCMessage({
-                    sender: packet?.source_name,
-                    message: packet?.message,
-                  });
-                } catch (e) {
-                  console.log(e);
-                }
-                break;
-              case textPacketTypes[8]: // "JSON Whisper" text packet
-              case textPacketTypes[9]: // "JSON" text packet
-              case textPacketTypes[10]: // "JSON Announcement" text packet
-                OPO("Got a", `${packet.type} text packet:`, packet.message);
-                break;
-              default: // Popup, Jukebox Popup, Tip, System, Raw
-                if (logpaknames === 1) {
-                  OPO("Text packet was", packet.type, "type");
-                }
-            }
-          } catch (e) {
-            console.log(e);
-          }
-        });
-        this.client.on("player_list", async (packet) => {
-          try {
-            let wasJoin = packet.records.type === "add";
-            let plrs = packet.records.records_count;
-            for (const i of Array(plrs).keys()) {
-              try {
-                let thisPlayer = packet.records.records[i];
-                let pData = !!wasJoin
-                  ? await this.addPlayer(thisPlayer)
-                  : this.players[thisPlayer.uuid];
-                // console.log(`Player connecting, data:${packet.records.records[ i ]}}`);
-                let pName =
-                  (await pData?.username) ??
-                  `Unknown Player: ${thisPlayer.uuid}`;
-                if (pName !== this.client.username) {
-                  this.handleJoinLeave(pName, wasJoin);
-                }
-              } catch (e) {
-                console.log(e);
               }
+            } catch (e) {
+              console.log(e);
             }
-          } catch (e) {
-            console.log(e);
           }
-        });
+        );
         this.client.on("disconnect", async () => {
           console.log("Got disconnect packet");
           try {
             setTimeout(async () => {
               const processNameOrId = "phoenix";
-              pm2.restart(processNameOrId, (err, proc) => {
+              restart(processNameOrId, (err, proc) => {
                 if (err) {
                   console.error(`Failed to restart process: ${err}`);
                 } else {
@@ -438,9 +535,12 @@ class DiscBot {
             );
           }
         });
-        this.client.on("packet", (packet) => {
-          logOrIgnore(packet.data.name);
-        });
+        this.client.on(
+          "packet",
+          (/** @type {{ data: { name: any; }; }} */ packet) => {
+            logOrIgnore(packet.data.name);
+          }
+        );
         // this.client.on('join', (packet) => {
         //     this.connectionReady = true;
         //     connectionReady = true;
@@ -450,7 +550,7 @@ class DiscBot {
           connectionReady = true;
           this.sendStartupMessage()
             .then(() =>
-              this.discordClient.sendOnlineEmbed().then(() => {
+              this.sendOnlineEmbed().then(() => {
                 console.log("Startup messages deployed to discord/mc");
               })
             )
@@ -463,51 +563,17 @@ class DiscBot {
     // Discord Client Logic
     const discordClient = this.discordClient;
     discordClient.login(discordToken);
-    this.discordClient.sendOnlineEmbed = async function () {
-      const fancyStartMSG = fancyMSG(
-        `**${config.worldName}'s chat has been bridged with Discord**`,
-        "#139dbf",
-        "RealmsCord: Phoenix",
-        conceptArt
-      );
-      discordClient.channels.fetch(config.channelId).then(
-        async (channel) =>
-          await channel
-            .send({
-              embeds: [fancyStartMSG],
-            })
-            .then((msg) => {
-              setTimeout(async () => {
-                try {
-                  msg.fetch().then(
-                    (mssg) => {
-                      mssg.delete();
-                    },
-                    (e) => {
-                      console.log(e);
-                    }
-                  );
-                } catch (e) {
-                  console.log(e);
-                } // message was already deleted
-              }, 30000);
-            })
-            .catch((error) => {
-              console.error(error);
-            })
-      );
-    };
     this.discordClient.on("ready", async () => {
       console.info(
         "RealmsCord: Phoenix - Discord client ready, setting activity..."
       );
       this.discordClient.user.setActivity(`over ${config.worldName}`, {
-        type: "WATCHING",
+        type: 3,
       });
       console.info(
         `RealmsCord: Phoenix - Activity set.Connected to Discord as ${this.discordClient.user.username}`
       );
-      // Send an embed in the designated discord channel
+      this.sendOnlineEmbed();
     });
     this.discordClient.on("messageCreate", async (message) => {
       try {
@@ -531,7 +597,9 @@ class DiscBot {
             [null, undefined, ""].includes(msgAuthor)
           )
         ) {
-          console.log(`Debug: Discord message from ${message.author.id}: ${message.content}`);
+          console.log(
+            `Debug: Discord message from ${message.author.id}: ${message.content}`
+          );
           this.handleDiscordMessage(message);
         }
       } catch (e) {
@@ -558,7 +626,7 @@ class DiscBot {
               "#dd0000"
             );
             return await interaction
-              .editReply({
+              .reply({
                 embeds: [fancyResponse],
                 ephemeral: true,
               })
@@ -567,7 +635,7 @@ class DiscBot {
               });
           }
           try {
-            this.dispatchCommand(interaction.options.getString("input"));
+            this.dispatchCommand(interaction.options.get("input"));
             cmdResponse = "Command execution successful.";
           } catch (error) {
             console.error("Error executing command: ", error);
@@ -581,7 +649,6 @@ class DiscBot {
           await interaction
             .editReply({
               embeds: [fancyResponse],
-              ephemeral: false,
             })
             .catch((error) => {
               console.error(error);
@@ -603,7 +670,7 @@ class DiscBot {
             return;
           } else {
             const operationResult = await this.addToWhitelist(
-              interaction.options.getString("player")
+              interaction.options.get("player")
             );
             let outcomeString = operationResult;
             await interaction.editReply({
@@ -627,7 +694,7 @@ class DiscBot {
             );
           } else {
             const operationResult = await this.removeFromWhitelist(
-              interaction.options.getString("player")
+              interaction.options.get("player")
             );
             await interaction.editReply({
               content: operationResult,
@@ -643,7 +710,7 @@ class DiscBot {
         }
       } else if (commandName === "list") {
         const API = await RealmAPI.from(this.flow, "bedrock");
-        const rr = await API.getRealm(config.realmId);
+        const rr = await API.getRealm(config?.realmId);
         const usr = await interaction.user.username;
         const plrs = rr.players;
         let OP = plrs.filter((e) => {
@@ -665,13 +732,12 @@ class DiscBot {
         await interaction
           .editReply({
             embeds: [fancyResponse],
-            ephemeral: false,
           })
           .catch((error) => {
             console.error(error);
           });
       } else if (commandName === "getxuid") {
-        let pname = `${interaction.options.getString("name")}`;
+        let pname = `${interaction.options.get("name")}`;
         let targetPlayer = await this.getPlayerByUsername(pname);
         let cmdResponse =
           targetPlayer == null
@@ -686,7 +752,6 @@ class DiscBot {
         await interaction
           .editReply({
             embeds: [fancyResponse],
-            ephemeral: false,
           })
           .catch((error) => {
             console.error(error);
@@ -704,7 +769,6 @@ class DiscBot {
             return await interaction
               .editReply({
                 embeds: [fancyResponse],
-                ephemeral: true,
               })
               .catch((error) => {
                 console.error(error);
@@ -714,8 +778,8 @@ class DiscBot {
           console.error(e);
         }
         try {
-          let felecia = interaction.options.getString("felecia");
-          let pxuid = parseInt(felecia);
+          let felecia = interaction.options.get("felecia");
+          let pxuid = parseInt(felecia.user?.id ?? null);
           if (isNaN(pxuid)) {
             let _p = await this.getPlayerByUsername(felecia);
             pxuid = _p.xbox_user_id;
@@ -725,11 +789,11 @@ class DiscBot {
               console.error(
                 "Warning: felecia not found for input: " + `${felecia}`
               );
-              pxuid = "000000000";
+              pxuid = 0o000000000;
             }
           }
           let pName = "them";
-          if (parseInt(pxuid) > 1) {
+          if (typeof pxuid === "string" ? parseInt(pxuid) : pxuid > 1) {
             let _plr = await this.getPlayerByXuid(pxuid);
             pName = _plr.username ?? "them";
           }
@@ -762,7 +826,6 @@ class DiscBot {
                   return await interaction
                     .editReply({
                       embeds: [fancyResponse],
-                      ephemeral: true,
                     })
                     .catch((error) => {
                       console.error(error);
@@ -779,7 +842,6 @@ class DiscBot {
                   return await interaction
                     .editReply({
                       embeds: [fancyResponse],
-                      ephemeral: true,
                     })
                     .catch((error) => {
                       console.error(error);
@@ -798,7 +860,7 @@ class DiscBot {
   }
   async getOnlinePlayerList() {
     const API = await RealmAPI.from(this.flow, "bedrock");
-    const rr = await API.getRealm(config.realmId);
+    const rr = await API.getRealm(config?.realmId);
     const plrs = rr.players;
     let OP = plrs.filter((e) => {
       return e.online;
@@ -812,6 +874,10 @@ class DiscBot {
     });
     return pNames;
   }
+  /**
+   * @param {any} sender
+   * @param {string | Iterable<any> | ArrayLike<any>} rawCmdMessage
+   */
   async handleCommand(sender, rawCmdMessage) {
     let chrs = Array.from(rawCmdMessage);
     for (const i of Array(chrs.length).keys()) {
@@ -918,12 +984,17 @@ class DiscBot {
                     let embedMsg = fancyMSG(nowPlaying, sender, "[TectonixFM]");
                     this.discordClient.channels
                       .fetch(config.channelId)
-                      .then(
-                        async (channel) =>
+                      .then(async (channel) => {
+                        if (channel instanceof TextChannel) {
                           await channel.send({
                             embeds: [embedMsg],
-                          })
-                      )
+                          });
+                        } else {
+                          console.error(
+                            "Fetched channel is not a text channel."
+                          );
+                        }
+                      })
                       .catch((error) => {
                         console.error(error);
                       });
@@ -1034,22 +1105,25 @@ class DiscBot {
     }
   }
   // Move along, nothing to see here
+  /**
+   * @param {any} pName
+   */
   async greetPlayer(pName) {
     setTimeout(() => {
-      client.queue("text", {
+      this.client.queue("text", {
         type: "chat",
         needs_translation: false,
-        source_name: bot_name,
+        source_name: config?.botName ?? "Tectonix",
         xuid: "",
         platform_chat_id: "",
         message: `###signal###(1) ${pName}`,
       });
     }, 10000);
     setTimeout(async () => {
-      client.queue("text", {
+      this.client.queue("text", {
         type: "chat",
         needs_translation: false,
-        source_name: bot_name,
+        source_name: config?.botName ?? "Tectonix",
         xuid: "",
         platform_chat_id: "",
         message: `###signal###(2) ${pName}`,
@@ -1076,6 +1150,10 @@ class DiscBot {
     }
   }
 
+  /**
+   * @param {any} sender
+   * @param {any} txt
+   */
   async getPan(sender, txt) {
     if (openai == null) {
       console.log("Pan is unavailable");
@@ -1103,6 +1181,10 @@ class DiscBot {
     return null;
   }
 
+  /**
+   * @param {any} sender
+   * @param {string} panMessage
+   */
   panHandle(sender, panMessage) {
     let r = null;
     this.getPan(sender, panMessage).then(async (rr) => {
@@ -1113,12 +1195,24 @@ class DiscBot {
           let embedMsg = fancyMSG(rr, sender, "Tectonix [Pan]");
           this.discordClient.channels
             .fetch(config.channelId)
-            .then(
-              async (channel) =>
-                await channel.send({
-                  embeds: [embedMsg],
-                })
-            )
+            .then((channel) => {
+              // Check if the channel is a TextChannel, DMChannel, or NewsChannel
+              if (
+                channel instanceof TextChannel ||
+                channel instanceof DMChannel ||
+                channel instanceof NewsChannel
+              ) {
+                channel
+                  .send({
+                    embeds: [embedMsg],
+                  })
+                  .catch((error) =>
+                    console.error("Error sending message:", error)
+                  );
+              } else {
+                console.error("Fetched channel is not a text-based channel.");
+              }
+            })
             .catch((error) => {
               console.error(error);
             });
@@ -1138,12 +1232,24 @@ class DiscBot {
           );
           this.discordClient.channels
             .fetch(config.channelId)
-            .then(
-              async (channel) =>
-                await channel.send({
-                  embeds: [embedMsg],
-                })
-            )
+            .then((channel) => {
+              if (
+                channel instanceof TextChannel ||
+                channel instanceof DMChannel ||
+                channel instanceof NewsChannel
+              ) {
+                channel
+                  .send("Your message here")
+                  .then((/** @type {{ content: any; }} */ message) =>
+                    console.log(`Sent message: ${message.content}`)
+                  )
+                  .catch((error) =>
+                    console.error("Error sending message:", error)
+                  );
+              } else {
+                console.error("Fetched channel is not a text-based channel.");
+              }
+            })
             .catch((error) => {
               console.error(error);
             });
@@ -1154,6 +1260,9 @@ class DiscBot {
     });
   }
   // Parse messages coming from the game chat and relay to discord
+  /**
+   * @param {{ sender: any; message: any; }} packet
+   */
   async handleMCMessage(packet) {
     let msg = await packet.message;
     let parsed = handleCSZE(msg);
@@ -1178,12 +1287,19 @@ class DiscBot {
       );
       await this.discordClient.channels
         .fetch(config.channelId)
-        .then(
-          async (channel) =>
-            await channel.send({
-              embeds: [embedMsg],
-            })
-        )
+        .then((channel) => {
+          if (
+            channel instanceof TextChannel ||
+            channel instanceof DMChannel ||
+            channel instanceof NewsChannel
+          ) {
+            channel
+              .send({ embeds: [embedMsg] })
+              .catch((error) => console.error("Error sending message:", error));
+          } else {
+            console.error("Fetched channel is not a text-based channel.");
+          }
+        })
         .catch((error) => {
           console.error(error);
         });
@@ -1191,6 +1307,10 @@ class DiscBot {
       console.error(er.message);
     }
   }
+  /**
+   * @param {string} rawMessage
+   * @param {any} packet
+   */
   async handleTranslation(rawMessage, paramLength = 0, params = [], packet) {
     // TODO: Implementation
     try {
@@ -1226,6 +1346,9 @@ class DiscBot {
       console.log(red(`Unexpected error in DiscBot.handleTranslation: ${e}`));
     }
   }
+  /**
+   * @param {{ message: any; parameters: string | any[]; xuid: any; }} packet
+   */
   async onPlayerDeath(packet) {
     try {
       const rawEvent = packet.message;
@@ -1255,12 +1378,19 @@ class DiscBot {
       let embedMsg = fancyMSG(formattedString, deadPlayer);
       await this.discordClient.channels
         .fetch(config.channelId)
-        .then(
-          async (channel) =>
-            await channel.send({
-              embeds: [embedMsg],
-            })
-        )
+        .then((channel) => {
+          if (
+            channel instanceof TextChannel ||
+            channel instanceof DMChannel ||
+            channel instanceof NewsChannel
+          ) {
+            channel
+              .send({ embeds: [embedMsg] })
+              .catch((error) => console.error("Error sending message:", error));
+          } else {
+            console.error("Fetched channel is not a text-based channel.");
+          }
+        })
         .catch((error) => {
           console.error(error);
         });
@@ -1268,6 +1398,9 @@ class DiscBot {
       console.log(`Error handling player death: ${e.message}`);
     }
   }
+  /**
+   * @param {{ entity_unique_id: { toString: () => any; }; platform_chat_id: any; is_teacher: any; is_host: any; skin_data: any; build_platform: { toString: () => any; }; uuid: string | number; }} record
+   */
   async addPlayer(record) {
     try {
       record.entity_unique_id = record.entity_unique_id.toString();
@@ -1277,41 +1410,37 @@ class DiscBot {
       delete record.skin_data;
       record.build_platform = record.build_platform.toString();
       this.players[record.uuid] = record;
-      fs.writeFileSync(
-        "./players.json",
-        JSON.stringify(this.players, null, 4),
-        (e) => {
-          console.log(e);
-        }
-      );
+      writeFileSync("./players.json", JSON.stringify(this.players, null, 4));
+      // console.log(`Added player: ${record?.username}`);
       return record;
     } catch (e) {
-      console.log(red(`Unexpected error in DiscBot.addPlayer: ${e}`));
+      console.log(`Unexpected error in DiscBot.addPlayer: ${e}`);
     }
   }
+  /**
+   * @param {import("discord.js").CommandInteractionOption<import("discord.js").CacheType>} playerName
+   */
   async removeFromWhitelist(playerName) {
-    let operationResult = await _removeWL(playerName);
+    let operationResult = await this._removeWL(playerName);
+    let outcomeString;
     switch (operationResult) {
       case 0:
-        outcomeString = `Success, un-whitelisted ${interaction.options.getString(
-          "player"
-        )}.`;
+        outcomeString = `Success, un-whitelisted ${playerName}.`;
         break;
       case 1:
-        outcomeString = `Error: Invalid player name: ${interaction.options.getString(
-          "player"
-        )}`;
+        outcomeString = `Error: Invalid player name: ${playerName}`;
         break;
       case 2:
-        outcomeString = `Error: ${interaction.options.getString(
-          "player"
-        )} not in whitelist.`;
+        outcomeString = `Error: ${playerName} not in whitelist.`;
         break;
       default:
         outcomeString = `An unexpected error occurred. Check the log for details.`;
     }
     return outcomeString;
   }
+  /**
+   * @param {any} playerName
+   */
   async _removeWL(playerName) {
     let player = await this.getPlayerByUsername(playerName);
     let wlist = this.whitelist;
@@ -1337,6 +1466,9 @@ class DiscBot {
       return 3;
     }
   }
+  /**
+   * @param {any} playerName
+   */
   async _addWL(playerName) {
     let player = await this.getPlayerByUsername(playerName);
     let wlist = this.whitelist;
@@ -1362,29 +1494,30 @@ class DiscBot {
       return 3;
     }
   }
+  /**
+   * @param {import("discord.js").CommandInteractionOption<import("discord.js").CacheType>} playerName
+   */
   async addToWhitelist(playerName) {
+    let outcomeString;
     let operationResult = await this._addWL(playerName);
     switch (operationResult) {
       case 0:
-        outcomeString = `Success, whitelisted ${interaction.options.getString(
-          "player"
-        )}.`;
+        outcomeString = `Success, whitelisted ${playerName}.`;
         break;
       case 1:
-        outcomeString = `Error: Invalid player name: ${interaction.options.getString(
-          "player"
-        )}`;
+        outcomeString = `Error: Invalid player name: ${playerName}`;
         break;
       case 2:
-        outcomeString = `Error: ${interaction.options.getString(
-          "player"
-        )} is already whitelisted.`;
+        outcomeString = `Error: ${playerName} is already whitelisted.`;
         break;
       default:
         outcomeString = `An unexpected error occurred. Check the log for details.`;
     }
     return outcomeString;
   }
+  /**
+   * @param {string | import("discord.js").CommandInteractionOption<import("discord.js").CacheType>} pName
+   */
   async getPlayerByUsername(pName) {
     let correlation = {};
     console.log(`getPlayerByUsername: Searched for "${pName}"`);
@@ -1404,6 +1537,9 @@ class DiscBot {
       return null;
     }
   }
+  /**
+   * @param {number} PXUID
+   */
   getPlayerByXuid(PXUID) {
     const pXUID = `${PXUID}`;
     let correlation = {};
@@ -1418,6 +1554,9 @@ class DiscBot {
     }
   }
   // Send a discord message when players join or leave
+  /**
+   * @param {any} pName
+   */
   async handleJoinLeave(pName, wasJoin = true) {
     try {
       let plr = await this.getPlayerByUsername(pName);
@@ -1461,12 +1600,15 @@ class DiscBot {
       console.log(green(joinMessage));
       await this.discordClient.channels
         .fetch(config.channelId)
-        .then(
-          async (channel) =>
+        .then(async (channel) => {
+          if (channel instanceof TextChannel) {
             await channel.send({
               embeds: [embedMsg],
-            })
-        )
+            });
+          } else {
+            console.error("Fetched channel is not a text channel.");
+          }
+        })
         .catch((error) => {
           console.error(red(error.message));
         });
@@ -1475,11 +1617,14 @@ class DiscBot {
     }
   }
   // Parse messages coming from discord
+  /**
+   * @param {import("discord.js").Message<boolean>} message
+   */
   async handleDiscordMessage(message) {
-	console.log("Debug: handleDiscordMessage", message.content)
+    console.log("Debug: handleDiscordMessage", message.content);
     try {
       const msgAuthor = (await message?.author?.username) ?? "";
-      if (msgAuthor === this.discordClient.username) {
+      if (msgAuthor === this.discordClient.user.username) {
         return;
       }
       let msg = await message.content;
@@ -1507,6 +1652,9 @@ class DiscBot {
 
   fmHandler() {}
 
+  /**
+   * @param {string} codeOutput
+   */
   async sendCodeResult(codeOutput, sender = null) {
     console.log("SendCodeResult: ", codeOutput, sender);
     try {
@@ -1534,17 +1682,22 @@ class DiscBot {
       let embedMsg = fancyMSG(
         codeOutput.replace(/[\n]+/gim, "\n"),
         sender,
-        (title = "Code Output"),
-        (embedColor = messageColor)
+        "Code Output",
+        messageColor
       );
       await this.discordClient.channels
         .fetch(config.channelId)
-        .then(
-          async (channel) =>
+        .then(async (channel) => {
+          if (channel instanceof TextChannel) {
             await channel.send({
               embeds: [embedMsg],
-            })
-        )
+            });
+          } else {
+            console.error(
+              "Fetched channel is not a text channel."
+            );
+          }
+        })
         .catch((error) => {
           console.error(error);
         });
@@ -1554,6 +1707,10 @@ class DiscBot {
   }
 
   // Dispatch messages to the game chat
+  /**
+   * @param {string | Iterable<any> | ArrayLike<any>} messageEvent
+   * @param {string} [msgAuthor]
+   */
   async broadcast(messageEvent, msgAuthor) {
     let outputMessage = "";
     try {
@@ -1606,6 +1763,9 @@ class DiscBot {
       );
     }
   }
+  /**
+   * @param {string | import("discord.js").CommandInteractionOption<import("discord.js").CacheType>} command
+   */
   dispatchCommand(command) {
     try {
       if (!(this.connectionReady || connectionReady)) {
@@ -1636,5 +1796,7 @@ const initialize = () => {
   bot.onStartup();
   return bot;
 };
-exports.initialize = initialize;
-exports.DiscBot = DiscBot;
+const _initialize = initialize;
+export { _initialize as initialize };
+const _DiscBot = DiscBot;
+export { _DiscBot as DiscBot };
