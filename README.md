@@ -2,7 +2,7 @@
 <p align="center">Connects your Minecraft Bedrock realm or server's game chat with a Discord channel using PrismarineJS's bedrock-protocol and discord.js</p>
 <hr>
 <p align="center">
-  <img width="70%" border="3px solid black" src="https://i.imgur.com/2rZVegA.jpg">
+  <img width="70%" border="3px solid black" src="https://github.com/user-attachments/assets/86d0c262-e28c-4c74-8163-1144473990fa">
   <hr>
   <div style="display:flex;flex-direction:row">
    <p align="center">
