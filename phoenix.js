@@ -1,27 +1,53 @@
-import request from "axios";
-import bedrock from "bedrock-protocol";
-// import createClient from "bedrock-protocol"
-import { readFileSync, createWriteStream, existsSync, writeFileSync } from "fs";
-import { join } from "path";
-import { format } from "util";
-import { Authflow } from "prismarine-auth";
-import { RealmAPI } from "prismarine-realms";
-import { generateKeyPairSync } from "crypto";
-const curve = "secp384r1";
-import {
-  Client,
-  GatewayIntentBits,
-  EmbedBuilder,
-  version,
-  TextChannel,
-  ChannelType,
-  DMChannel,
-  NewsChannel,
-} from "discord.js";
+const request = require("axios");
+const bedrock = require("bedrock-protocol");
+const { readFileSync, createWriteStream, existsSync, writeFileSync } = require("fs");
+const { join } = require("path");
+const { format } = require("util");
+const { Authflow } = require("prismarine-auth");
+const { RealmAPI } = require("prismarine-realms");
+const { generateKeyPairSync } = require("crypto");
+const { 
+  Client, 
+  GatewayIntentBits, 
+  EmbedBuilder, 
+  version, 
+  TextChannel, 
+  ChannelType, 
+  DMChannel, 
+  NewsChannel 
+} = require("discord.js");
+const { restart } = require("pm2");
+const {
+  logpaknames,
+  welcomeMessage,
+  conceptArt,
+  textPacketTypes,
+  commandPrefix,
+  hexColor,
+  commandRegistry,
+  hasMentions,
+  stringToColor,
+  purple,
+  orange,
+  red,
+  green,
+  OPO,
+  POP,
+  allTrue,
+  panTest,
+  handleCSZE,
+  findFirstMatch,
+  removeEntryByParam,
+  logOrIgnore,
+  sanitizeString,
+  getDevice,
+  filterDevice,
+} = require("./utils");
+const { playerDied } = require("./translate");
+
 console.log(version);
 const config = JSON.parse(readFileSync("./config.json").toString());
 const MessageEmbed = EmbedBuilder;
-import { restart } from "pm2";
 const chatOffset = 10240;
 const bootTimeDay = Math.floor(new Date().getTime() / 60 / 60000 / 24);
 const todaysLog = `./logs/phoenix_${bootTimeDay.toString()}.log`;
@@ -53,7 +79,6 @@ try {
   console.error("An error occurred while attempting to load OpenAI");
 }
 
-import { playerDied } from "./translate";
 console.log = function (/** @type {any} */ d) {
   let now = new Date();
   let log_format = `[${now.toTimeString().split(" ")[0]}] ` + format(d) + "\n";
@@ -73,46 +98,6 @@ process.on("uncaughtException", function (err) {
   lastLogMessage = log_format;
 });
 
-import {
-  logpaknames,
-  welcomeMessage,
-  conceptArt,
-  textPacketTypes,
-  commandPrefix,
-  hexColor,
-  commandRegistry,
-  hasMentions,
-  stringToColor,
-  purple,
-  orange,
-  red,
-  green,
-  OPO,
-  POP,
-  allTrue,
-  panTest,
-  handleCSZE,
-  findFirstMatch,
-  removeEntryByParam,
-  logOrIgnore,
-  sanitizeString,
-  getDevice,
-  filterDevice,
-} from "./utils";
-import axios from "axios";
-/**
- * @typedef {Object} PlayerRecord
- * @property {Object} entity_unique_id
- * @property {function(): any} entity_unique_id.toString
- * @property {*} platform_chat_id
- * @property {*} is_teacher
- * @property {*} is_host
- * @property {*} skin_data
- * @property {Object} build_platform
- * @property {function(): any} build_platform.toString
- * @property {string|number} uuid
- * @property {string} username
- */
 const discordToken = config.token;
 const realmid = config?.realmId ?? null;
 const serverIp = config?.serverIp ?? null;
@@ -299,6 +284,7 @@ class DiscBot {
         console.error(nokey_error);
         reject(nokey_error);
       }
+      
       var xbotconfig = {
         method: "get",
         maxBodyLength: Infinity,
