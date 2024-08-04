@@ -191,7 +191,7 @@ class DiscBot {
               host: isRealm ? null : config?.serverIp ?? "127.0.0.1",
               port: isRealm ? null : config?.serverPort ?? 0,
             });
-            console.log('Game client: resolving...")
+            console.log('Game client: resolving...');
             resolve(c);
           } catch (e) {
             console.log(e);
