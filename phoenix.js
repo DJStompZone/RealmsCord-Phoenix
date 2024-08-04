@@ -219,7 +219,6 @@ class DiscBot {
     }
     this.loadPlayersFM();
   }
-
   async restrealm() {
     const rr = config?.realmId
       ? await this.prealmapi.getRealm(config.realmId)
