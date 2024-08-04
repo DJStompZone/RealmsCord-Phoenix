@@ -5,6 +5,7 @@ const { join } = require("path");
 const { format } = require("util");
 const { Authflow } = require("prismarine-auth");
 const { RealmAPI } = require("prismarine-realms");
+const curve = 'secp384r1';
 const { generateKeyPairSync } = require("crypto");
 const { 
   Client, 
