@@ -1782,7 +1782,11 @@ const initialize = () => {
   bot.onStartup();
   return bot;
 };
+
 const _initialize = initialize;
-export { _initialize as initialize };
 const _DiscBot = DiscBot;
-export { _DiscBot as DiscBot };
+
+module.exports = {
+  initialize: _initialize,
+  DiscBot: _DiscBot
+};
