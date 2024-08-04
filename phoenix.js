@@ -179,6 +179,7 @@ class DiscBot {
         setTimeout(() => {
           try {
             //const c = bedrock.createClient({version: '1.21.40'});
+            console.log("Creating game client...");
             c = bedrock.createClient({
               connectTimeout: 15000,
               realms: !isRealm
@@ -190,12 +191,13 @@ class DiscBot {
               host: isRealm ? null : config?.serverIp ?? "127.0.0.1",
               port: isRealm ? null : config?.serverPort ?? 0,
             });
+            console.log('Game client: resolving...")
             resolve(c);
           } catch (e) {
             console.log(e);
             reject(e.message);
           }
-        }, 4020);
+        }, 600000);
       });
     };
     this.getGameClient().then(
