@@ -1695,7 +1695,7 @@ class DiscBot {
       console.error("Error broadcasting message:", error);
     }
   }
-  
+
   /**
    * Call this method when the connection is ready
    */
@@ -1707,12 +1707,10 @@ class DiscBot {
         const { messageEvent, msgAuthor } = this.messageQueue.shift();
         this.broadcast(messageEvent, msgAuthor);
 
-        // Set a delay before broadcasting the next message
-        setTimeout(broadcastNextMessage, 1000); // 1000ms delay (1 second)
+        setTimeout(broadcastNextMessage, 750);
       }
     };
 
-    // Start broadcasting messages with a delay
     broadcastNextMessage();
   }
 
