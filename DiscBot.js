@@ -1679,7 +1679,11 @@ class DiscBot {
 
     let outputMessage = [author, msgOutput].join(" ");
     console.log("Broadcasting message:", outputMessage);
-
+    let bot_name = _config?.botName ?? this?.client?.username;
+      if (!bot_name) {
+        console.error("Bot name not found. Using default name: RealmsCord Phoenix");
+        bot_name = "RealmsCord Phoenix"
+      }
     try {
       this.client.queue("text", {
         type: "chat",
