@@ -106,6 +106,5 @@ class ClientSingleton extends EventEmitter {
 }
 
 const instance = new ClientSingleton();
-Object.freeze(instance);
 
 module.exports = instance;

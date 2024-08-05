@@ -797,6 +797,4 @@ class DiscBot {
   }
 }
 
-module.exports = DiscBot;
-
 exports.DiscBot = DiscBot;
