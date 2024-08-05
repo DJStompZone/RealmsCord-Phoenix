@@ -74,7 +74,7 @@ exports.fancyMSG = fancyMSG;
 const commandNames = Object.keys(commandRegistry);
 exports.initialize = () => {
   const bot = new DiscBot();
-  bot.onStartup();
+  bot.setupListeners();
   return bot;
 };
 
