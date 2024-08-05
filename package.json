@@ -1,6 +1,6 @@
 {
   "name": "realmscord-phoenix",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Connects a Discord channel with the in-game chat on a Minecraft Bedrock realm or server using bedrock-protocol and discord.js",
   "main": "index.js",
   "scripts": {

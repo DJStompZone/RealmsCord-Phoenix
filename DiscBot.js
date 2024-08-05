@@ -1,15 +1,74 @@
 const bedrock = require("bedrock-protocol");
-const { readFileSync, existsSync, writeFileSync } = require("fs");
-const { join } = require("path");
-const { Authflow } = require("prismarine-auth");
-const { RealmAPI } = require("prismarine-realms");
-const { generateKeyPairSync } = require("crypto");
-const { Client, GatewayIntentBits, TextChannel, ChannelType, DMChannel, NewsChannel } = require("discord.js");
-const { restart } = require("pm2");
-const { logpaknames, welcomeMessage, conceptArt, textPacketTypes, commandPrefix, commandRegistry, hasMentions, purple, orange, red, green, OPO, POP, allTrue, panTest, handleCSZE, findFirstMatch, removeEntryByParam, logOrIgnore, sanitizeString, getDevice, filterDevice } = require("./utils");
-const { playerDied } = require("./translate");
-const { default: axios } = require("axios");
-const { curve, config, isRealm, realmid, fancyMSG, commandNames, openai, discordToken, chatOffset, dontDoAutomod } = require("./phoenix");
+const {
+  readFileSync,
+  existsSync,
+  writeFileSync
+} = require("fs");
+const {
+  join
+} = require("path");
+const {
+  Authflow
+} = require("prismarine-auth");
+const {
+  RealmAPI
+} = require("prismarine-realms");
+const {
+  generateKeyPairSync
+} = require("crypto");
+const {
+  Client,
+  GatewayIntentBits,
+  TextChannel,
+  ChannelType,
+  DMChannel,
+  NewsChannel
+} = require("discord.js");
+const {
+  restart
+} = require("pm2");
+const {
+  logpaknames,
+  welcomeMessage,
+  conceptArt,
+  textPacketTypes,
+  commandPrefix,
+  commandRegistry,
+  hasMentions,
+  purple,
+  orange,
+  red,
+  green,
+  OPO,
+  POP,
+  allTrue,
+  panTest,
+  handleCSZE,
+  findFirstMatch,
+  removeEntryByParam,
+  logOrIgnore,
+  sanitizeString,
+  getDevice,
+  filterDevice
+} = require("./utils");
+const {
+  playerDied
+} = require("./translate");
+const {
+  default: axios
+} = require("axios");
+const {
+  curve,
+  config,
+  isRealm,
+  realmid,
+  fancyMSG,
+  commandNames,
+  openai,
+  discordToken,
+  chatOffset,
+  dontDoAutomod
+} = require("./phoenix");
 
 
 class DiscBot {
@@ -58,9 +117,9 @@ class DiscBot {
             console.log("Creating game client...");
             c = bedrock.createClient({
               connectTimeout: 15000,
-              realms: !isRealm
-                ? null
-                : {
+              realms: !isRealm ?
+                null :
+                {
                   realmId: realmid ?? config?.realmId,
                 },
               username: isRealm ? null : config?.botName ?? null,
@@ -99,9 +158,9 @@ class DiscBot {
     this.loadPlayersFM();
   }
   async restrealm() {
-    const rr = config?.realmId
-      ? await this.prealmapi.getRealm(config.realmId)
-      : null;
+    const rr = config?.realmId ?
+      await this.prealmapi.getRealm(config.realmId) :
+      null;
     this.isRealm = !!(rr || isRealm === true);
     return rr;
   }
@@ -123,7 +182,10 @@ class DiscBot {
     );
 
     if (existingPlayerIndex === -1) {
-      this.fmplayers.push({ name: playerName, lastfm: lastFM });
+      this.fmplayers.push({
+        name: playerName,
+        lastfm: lastFM
+      });
     } else {
       this.fmplayers[existingPlayerIndex].lastfm = lastFM;
     }
@@ -226,11 +288,9 @@ class DiscBot {
     let data = JSON.stringify({
       language: useLanguage,
       version: useVersion,
-      files: [
-        {
-          content: content,
-        },
-      ],
+      files: [{
+        content: content,
+      },],
       compile_timeout: 10000,
       run_timeout: 10000,
       compile_memory_limit: -1,
@@ -256,159 +316,191 @@ class DiscBot {
       return "An error occurred while executing the code.";
     }
   }
+  ensureClient(callback) {
+    try {
+      if (this.client) {
+        return callback(null, this.client);
+      }
+      this.getGameClient().then(
+        (c) => {
+          this.client = c;
+          return callback(null, this.client);
+        },
+        (e) => {
+          console.error(e);
+          return callback(e);
+        }
+      );
+    } catch (er) {
+      console.error(er);
+      return callback(er);
+    }
+  }
+
   onStartup() {
     // Minecraft client logic (Packet listeners)
     try {
-      setTimeout(() => {
-        this.client.on(
-          "text",
-          (
-                    /** @type {{ source_name: any; type: any; message: string | any[]; parameters: any[]; parameters_length: number; }} */ packet
-          ) => {
-            if (packet?.source_name === this.client.username) {
-              return;
-            }
-            try {
-              switch (packet.type) {
-                case textPacketTypes[1]: // "translation" text packet
-                  try {
-                    console.log(
-                      "Translation packet message: " + packet.message
-                    );
-                    if (packet.parameters) {
+      this.ensureClient((err, _client) => {
+        if (err) {
+          console.error('Failed to initialize client:', err);
+          return;
+        }
+
+        setTimeout(() => {
+          _client.on(
+            "text",
+            (
+              /** @type {{ source_name: any; type: any; message: string | any[]; parameters: any[]; parameters_length: number; }} */
+              packet
+            ) => {
+              if (packet?.source_name === _client.username) {
+                return;
+              }
+              try {
+                switch (packet.type) {
+                  case textPacketTypes[1]: // "translation" text packet
+                    try {
                       console.log(
-                        "Translation packet params: " +
-                        JSON.stringify(packet.parameters)
+                        "Translation packet message: " + packet.message
                       );
+                      if (packet.parameters) {
+                        console.log(
+                          "Translation packet params: " +
+                          JSON.stringify(packet.parameters)
+                        );
+                      }
+                      this.handleTranslation(
+                        packet.message.toString(),
+                        packet?.parameters_length,
+                        packet?.parameters,
+                        packet
+                      );
+                    } catch (e) {
+                      console.log(e);
                     }
-                    this.handleTranslation(
-                      packet.message.toString(),
-                      packet?.parameters_length,
-                      packet?.parameters,
-                      packet
-                    );
-                  } catch (e) {
-                    console.log(e);
-                  }
-                  break;
-                case textPacketTypes[0]: // "chat" text packet {
-                  try {
-                    let prefixes = [this.prefix, "."];
-                    let parsed = handleCSZE(packet?.message);
-                    if (packet?.message?.length > 0 &&
-                      prefixes?.includes(parsed.message[0]) &&
-                      commandNames.includes(
-                        parsed.message.split(" ")[0].slice(1)
-                      )) {
-                      this.handleCommand(
-                        packet?.source_name,
-                        parsed.message.slice(1)
-                      );
-                    } else {
+                    break;
+                  case textPacketTypes[0]: // "chat" text packet {
+                    try {
+                      let prefixes = [this.prefix, "."];
+                      let parsed = handleCSZE(packet?.message);
+                      if (
+                        packet?.message?.length > 0 &&
+                        prefixes?.includes(parsed.message[0]) &&
+                        commandNames.includes(
+                          parsed.message.split(" ")[0].slice(1)
+                        )
+                      ) {
+                        this.handleCommand(
+                          packet?.source_name,
+                          parsed.message.slice(1)
+                        );
+                      } else {
+                        this.handleMCMessage({
+                          sender: packet?.source_name,
+                          message: packet?.message,
+                        });
+                        if (
+                          typeof openai !== "undefined" &&
+                          panTest(parsed.message)
+                        ) {
+                          this.panHandle(packet.source_name, parsed.message);
+                        }
+                      }
+                    } catch (e) {
+                      console.log(e);
+                    }
+                    break;
+                  case textPacketTypes[6]: // "whisper" text packet
+                  case textPacketTypes[7]: // "announcement" text packet
+                    try {
                       this.handleMCMessage({
                         sender: packet?.source_name,
                         message: packet?.message,
                       });
-                      if (typeof openai !== "undefined" &&
-                        panTest(parsed.message)) {
-                        this.panHandle(packet.source_name, parsed.message);
-                      }
+                    } catch (e) {
+                      console.log(e);
+                    }
+                    break;
+                  case textPacketTypes[8]: // "JSON Whisper" text packet
+                  case textPacketTypes[9]: // "JSON" text packet
+                  case textPacketTypes[10]: // "JSON Announcement" text packet
+                    OPO("Got a", `${packet.type} text packet:`, packet.message);
+                    break;
+                  default: // Popup, Jukebox Popup, Tip, System, Raw
+                    if (logpaknames === 1) {
+                      OPO("Text packet was", packet.type, "type");
+                    }
+                }
+              } catch (e) {
+                console.log(e);
+              }
+            }
+          );
+          _client.on(
+            "player_list",
+            async (
+              /** @type {{ records: { type: string; records_count: any; records: any[]; }; }} */
+              packet
+            ) => {
+              try {
+                let wasJoin = packet.records.type === "add";
+                let plrs = packet.records.records_count;
+                for (const i of Array(plrs).keys()) {
+                  try {
+                    let thisPlayer = packet.records.records[i];
+                    let pData = !!wasJoin ?
+                      await this.addPlayer(thisPlayer) :
+                      this.players[thisPlayer.uuid];
+                    // console.log(`Player connecting, data:${packet.records.records[ i ]}}`);
+                    let pName = (await pData?.username) ??
+                      `Unknown Player: ${thisPlayer.uuid}`;
+                    if (pName !== this.client.username) {
+                      this.handleJoinLeave(pName, wasJoin);
                     }
                   } catch (e) {
                     console.log(e);
                   }
-                  break;
-                case textPacketTypes[6]: // "whisper" text packet
-                case textPacketTypes[7]: // "announcement" text packet
-                  try {
-                    this.handleMCMessage({
-                      sender: packet?.source_name,
-                      message: packet?.message,
-                    });
-                  } catch (e) {
-                    console.log(e);
-                  }
-                  break;
-                case textPacketTypes[8]: // "JSON Whisper" text packet
-                case textPacketTypes[9]: // "JSON" text packet
-                case textPacketTypes[10]: // "JSON Announcement" text packet
-                  OPO("Got a", `${packet.type} text packet:`, packet.message);
-                  break;
-                default: // Popup, Jukebox Popup, Tip, System, Raw
-                  if (logpaknames === 1) {
-                    OPO("Text packet was", packet.type, "type");
-                  }
+                }
+              } catch (e) {
+                console.log(e);
               }
-            } catch (e) {
-              console.log(e);
             }
-          }
-        );
-        this.client.on(
-          "player_list",
-          async (
-                    /** @type {{ records: { type: string; records_count: any; records: any[]; }; }} */ packet
-          ) => {
+          );
+          _client.on("disconnect", async () => {
+            console.log("Got disconnect packet");
             try {
-              let wasJoin = packet.records.type === "add";
-              let plrs = packet.records.records_count;
-              for (const i of Array(plrs).keys()) {
-                try {
-                  let thisPlayer = packet.records.records[i];
-                  let pData = !!wasJoin
-                    ? await this.addPlayer(thisPlayer)
-                    : this.players[thisPlayer.uuid];
-                  // console.log(`Player connecting, data:${packet.records.records[ i ]}}`);
-                  let pName = (await pData?.username) ??
-                    `Unknown Player: ${thisPlayer.uuid}`;
-                  if (pName !== this.client.username) {
-                    this.handleJoinLeave(pName, wasJoin);
+              setTimeout(async () => {
+                const processNameOrId = "phoenix";
+                restart(processNameOrId, (err, proc) => {
+                  if (err) {
+                    console.error(`Failed to restart process: ${err}`);
+                  } else {
+                    console.log(`Process restarted: ${JSON.stringify(proc)}`);
                   }
-                } catch (e) {
-                  console.log(e);
-                }
-              }
+                });
+                this.reset();
+              }, 10000);
             } catch (e) {
-              console.log(e);
+              console.log(
+                `Unexpected error in DiscBot disconnect packet event handler: ${e}`
+              );
             }
-          }
-        );
-        this.client.on("disconnect", async () => {
-          console.log("Got disconnect packet");
-          try {
-            setTimeout(async () => {
-              const processNameOrId = "phoenix";
-              restart(processNameOrId, (err, proc) => {
-                if (err) {
-                  console.error(`Failed to restart process: ${err}`);
-                } else {
-                  console.log(`Process restarted: ${JSON.stringify(proc)}`);
-                }
-              });
-              this.reset();
-            }, 10000);
-          } catch (e) {
-            console.log(
-              `Unexpected error in DiscBot disconnect packet event handler: ${e}`
-            );
-          }
-        });
-        this.client.on(
-          "packet",
-          (/** @type {{ data: { name: any; }; }} */ packet) => {
-            logOrIgnore(packet.data.name);
-          }
-        );
-        this.client.on("spawn", () => {
-          this.connectionReady = true;
-          this.sendStartupMessage()
-            .then(() => this.sendOnlineEmbed().then(() => {
-              console.log("Startup messages deployed to discord/mc");
-            })
-            )
-            .catch((e) => console.log(e));
-        });
-      }, 5000);
+          });
+          _client.on(
+            "packet",
+            ( /** @type {{ data: { name: any; }; }} */ packet) => {
+              logOrIgnore(packet.data.name);
+            }
+          );
+          _client.on("spawn", () => {
+            this.connectionReady = true;
+            this.sendStartupMessage()
+              .then(() => this.sendOnlineEmbed().then(() => {
+                console.log("Startup messages deployed to discord/mc");
+              })).catch((e) => console.log(e));
+          });
+        }), 5000
+      })
     } catch (e) {
       console.log(`Unexpected error in DiscBot startup event: ${e}`);
     }
@@ -444,8 +536,7 @@ class DiscBot {
         // Make sure it's not a message we just sent, an empty string, undefined, or authorless
         if (!(
           message.author.id === config.clientId ||
-          message.content.length === 0 ||
-          [null, undefined, ""].includes(msgAuthor)
+          message.content.length === 0 || [null, undefined, ""].includes(msgAuthor)
         )) {
           console.log(
             `Debug: Discord message from ${message.author.id}: ${message.content}`
@@ -463,7 +554,9 @@ class DiscBot {
       await interaction.deferReply({
         ephemeral: false,
       });
-      const { commandName } = interaction;
+      const {
+        commandName
+      } = interaction;
       if (commandName === "sendcmd") {
         try {
           let cmdResponse = "";
@@ -589,9 +682,9 @@ class DiscBot {
       } else if (commandName === "getxuid") {
         let pname = `${interaction.options.get("name")}`;
         let targetPlayer = await this.getPlayerByUsername(pname);
-        let cmdResponse = targetPlayer == null
-          ? `Sorry, I can't find this player: ${pname}`
-          : `Name: ${pname}\nXUID: ${targetPlayer.xbox_user_id}`;
+        let cmdResponse = targetPlayer == null ?
+          `Sorry, I can't find this player: ${pname}` :
+          `Name: ${pname}\nXUID: ${targetPlayer.xbox_user_id}`;
         const usr = interaction.user.username ?? "";
         const fancyResponse = fancyMSG(
           cmdResponse,
@@ -1049,8 +1142,7 @@ class DiscBot {
                   .send({
                     embeds: [embedMsg],
                   })
-                  .catch((error) => console.error("Error sending message:", error)
-                  );
+                  .catch((error) => console.error("Error sending message:", error));
               } else {
                 console.error("Fetched channel is not a text-based channel.");
               }
@@ -1080,10 +1172,8 @@ class DiscBot {
                 channel instanceof NewsChannel) {
                 channel
                   .send("Your message here")
-                  .then((/** @type {{ content: any; }} */ message) => console.log(`Sent message: ${message.content}`)
-                  )
-                  .catch((error) => console.error("Error sending message:", error)
-                  );
+                  .then(( /** @type {{ content: any; }} */ message) => console.log(`Sent message: ${message.content}`))
+                  .catch((error) => console.error("Error sending message:", error));
               } else {
                 console.error("Fetched channel is not a text-based channel.");
               }
@@ -1130,7 +1220,9 @@ class DiscBot {
             channel instanceof DMChannel ||
             channel instanceof NewsChannel) {
             channel
-              .send({ embeds: [embedMsg] })
+              .send({
+                embeds: [embedMsg]
+              })
               .catch((error) => console.error("Error sending message:", error));
           } else {
             console.error("Fetched channel is not a text-based channel.");
@@ -1219,7 +1311,9 @@ class DiscBot {
             channel instanceof DMChannel ||
             channel instanceof NewsChannel) {
             channel
-              .send({ embeds: [embedMsg] })
+              .send({
+                embeds: [embedMsg]
+              })
               .catch((error) => console.error("Error sending message:", error));
           } else {
             console.error("Fetched channel is not a text-based channel.");
@@ -1623,4 +1717,5 @@ class DiscBot {
     }
   }
 }
+
 exports.DiscBot = DiscBot;
