@@ -477,20 +477,20 @@ class DiscBot {
               }
             }
           );
-          _client.on('connect', client => {
-            client.on('join', () => {
+          _client.on('connect',
+            client => {
               this.connectionReady = true;
               console.log("Client has joined the server. Connection is now ready.");
               this.onConnectionReady();
             });
 
-            _client.on('disconnect', () => {
+          _client.on('disconnect',
+            () => {
               this.connectionReady = false;
               console.log("Client has disconnected from the server. Connection is no longer ready.");
             });
-          });
-          _client.on(
-            "packet",
+
+          _client.on("packet",
             ( /** @type {{ data: { name: any; }; }} */ packet) => {
               logOrIgnore(packet.data.name);
             }
@@ -1680,10 +1680,10 @@ class DiscBot {
     let outputMessage = [author, msgOutput].join(" ");
     console.log("Broadcasting message:", outputMessage);
     let bot_name = _config?.botName ?? this?.client?.username;
-      if (!bot_name) {
-        console.error("Bot name not found. Using default name: RealmsCord Phoenix");
-        bot_name = "RealmsCord Phoenix"
-      }
+    if (!bot_name) {
+      console.error("Bot name not found. Using default name: RealmsCord Phoenix");
+      bot_name = "RealmsCord Phoenix"
+    }
     try {
       this.client.queue("text", {
         type: "chat",
