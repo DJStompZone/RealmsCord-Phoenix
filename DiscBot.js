@@ -1193,7 +1193,6 @@ class DiscBot {
       }
     });
   }
-  // Parse messages coming from the game chat and relay to discord
   /**
    * @param {{ sender: any; message: any; }} packet
    */
