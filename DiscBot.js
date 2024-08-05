@@ -34,7 +34,7 @@ class DiscBot {
       ],
     });
     this.keypair = generateKeyPairSync("ec", {
-      namedCurve: curve,
+      namedCurve: 'secp384r1',
     }).toString();
     this.flow = new Authflow();
     this.flow.getMsaToken();
