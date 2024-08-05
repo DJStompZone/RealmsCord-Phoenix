@@ -149,6 +149,12 @@ function chkMsg(msg) {
     return newMsg;
 }
 
+/**
+ * Converts a string to a color code.
+ *
+ * @param {string} str - The input string.
+ * @returns {import('discord.js').ColorResolvable} The color code generated from the input string.
+ */
 function stringToColor(str) {
     let hash = 0;
     for (var i = 0; i < str.length; i++) {
@@ -159,6 +165,7 @@ function stringToColor(str) {
         const value = (hash >> (i * 8)) & 0xff;
         color += ("00" + value.toString(16)).substr(-2);
     }
+    // @ts-ignore
     return color;
 };
 
@@ -234,8 +241,11 @@ function getDevice(deviceType) {
     }
 }
 
+/**
+ * @param {any[]} args
+ */
 function allTrue(...args) {
-    truthy = [];
+    let truthy = [];
     args.forEach((e) => truthy.push(!!e));
     return truthy.every(e => e == true);
 }
@@ -274,7 +284,7 @@ function handleCSZE(msg) {
             } else if (ch === ' ') {
                 resp.message += ' ';
                 continue;
-            } else if ((31 < (ch.charCodeAt(0) - chatOffset) < 127) || [9, 10, 13].includes(ch.charCodeAt(0) - chatOffset)) {
+            } else if ((ch.charCodeAt(0) - chatOffset > 31 && ch.charCodeAt(0) - chatOffset < 127) || [9, 10, 13].includes(ch.charCodeAt(0) - chatOffset)) {
                 // It's probably fine
                 if ((ch.charCodeAt(0) - chatOffset) > 0) {
                     resp.message += String.fromCharCode(ch.charCodeAt(0) - chatOffset);

@@ -34,5 +34,8 @@
     "prismarine-nbt": "^2.5.0",
     "prismarine-realms": "^1.2.0",
     "protodef": "^1.15.0"
+  },
+  "devDependencies": {
+    "typescript": "5.4"
   }
 }

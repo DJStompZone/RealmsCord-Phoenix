@@ -120,3 +120,4 @@ openaikey
 *.bak
 
 waysapi.json
+.vscode/settings.json

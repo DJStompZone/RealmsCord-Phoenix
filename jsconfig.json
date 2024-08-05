@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+      "target": "ES6", 
+      "module": "CommonJS", 
+      "checkJs": true,
+      "baseUrl": ".", 
+      "paths": {
+        "@/*": ["src/*"]
+      }
+    },
+    "include": [
+      "index.js",
+      "phoenix.js"
+    ],
+    "exclude": [
+      "node_modules",
+      "**/node_modules/*"
+    ]
+  }
+  
