@@ -18,7 +18,7 @@ const discordToken = config.token;
 const realmid = config?.realmId ?? null;
 const serverIp = config?.serverIp ?? null;
 const isRealm = !!realmid && !serverIp;
-
+const worldName = config?.worldName ?? null;
 let lastLogMessage = "";
 
 
@@ -47,7 +47,7 @@ process.on("uncaughtException", function (err) {
  * @param {string|null} [image]
  * @param {import("discord.js").ColorResolvable|null} [embedColor]
 */
-exports.fancyMSG = function (
+const fancyMSG = function (
   message,
   sender,
   title = null,
@@ -70,7 +70,7 @@ exports.fancyMSG = function (
 }
 
 exports.dontDoAutomod = true; // Don't use no double negatives
-
+exports.fancyMSG = fancyMSG;
 const commandNames = Object.keys(commandRegistry);
 exports.initialize = () => {
   const bot = new DiscBot();
@@ -100,6 +100,7 @@ exports.loadOpenAI = function () {
 exports.chatOffset = chatOffset;
 exports.config = config;
 exports.curve = curve;
+exports.worldName = worldName;
 exports.isRealm = isRealm;
 exports.commandNames = commandNames;
 exports.discordToken = discordToken;

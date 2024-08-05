@@ -59,17 +59,16 @@ const {
 } = require("axios");
 const {
   curve,
-  config,
-  isRealm,
-  realmid,
-  fancyMSG,
   commandNames,
   openai,
-  discordToken,
   chatOffset,
   dontDoAutomod
 } = require("./phoenix");
-
+const _config = JSON.parse(readFileSync("./config.json").toString());
+const discordToken = _config.token;
+const worldName = _config.worldName;
+const PHX = require("./phoenix")
+const fancyMSG = PHX.fancyMSG;
 
 class DiscBot {
   constructor() {
@@ -97,44 +96,42 @@ class DiscBot {
     }).toString();
     this.flow = new Authflow();
     this.flow.getMsaToken();
-    if (!!config?.realmId || !!config?.serverIp) {
+    if (!(!!_config?.realmId || !!_config?.serverIp)) {
       throw new Error(
         "Required configuration value missing: either realmId or serverIp must be set in config.json"
       );
     }
-    if (!!config?.realmId && !!config?.serverIp) {
+    if (!!_config?.realmId && !!_config?.serverIp) {
       throw new Error(
         "Required configuration: realmId or serverIp should be set in config, not both."
       );
     }
-    this.prealmapi = RealmAPI.from(this.flow, "bedrock");
+
+    this.prealmapi = this.isRealm ? RealmAPI.from(this.flow, "bedrock") : { getRealm: () => { } };
     this.getGameClient = function () {
       return new Promise((resolve, reject) => {
-        let c;
         setTimeout(() => {
           try {
-            //const c = bedrock.createClient({version: '1.21.40'});
             console.log("Creating game client...");
-            c = bedrock.createClient({
+            const c = bedrock.createClient({
               connectTimeout: 15000,
-              realms: !isRealm ?
-                null :
-                {
-                  realmId: realmid ?? config?.realmId,
-                },
-              username: isRealm ? null : config?.botName ?? null,
-              host: isRealm ? null : config?.serverIp ?? "127.0.0.1",
-              port: isRealm ? null : config?.serverPort ?? 0,
+              realms: !this.isRealm ? null : {
+                realmId: _config?.realmId,
+              },
+              username: this.isRealm ? null : _config?.botName ?? null,
+              host: this.isRealm ? null : _config?.serverIp ?? "127.0.0.1",
+              port: this.isRealm ? null : _config?.serverPort ?? 0,
             });
             console.log('Game client: resolving...');
             resolve(c);
           } catch (e) {
-            console.log(e);
+            console.error(e);
             reject(e.message);
           }
-        }, 600000);
+        }, 600000); // 10 minutes delay
       });
     };
+
     this.getGameClient().then(
       (c) => {
         this.client = c;
@@ -143,7 +140,15 @@ class DiscBot {
         console.error(e);
       }
     );
-    this.authorizedAdmins = config?.authorizedAdmins ?? [];
+    this.getGameClient().then(
+      (c) => {
+        this.client = c;
+      },
+      (e) => {
+        console.error(e);
+      }
+    );
+    this.authorizedAdmins = _config?.authorizedAdmins ?? [];
     this.players = JSON.parse(readFileSync("./players.json").toString());
     this._whitelist = JSON.parse(readFileSync("./whitelist.json").toString());
     this.prefix = commandPrefix;
@@ -158,10 +163,10 @@ class DiscBot {
     this.loadPlayersFM();
   }
   async restrealm() {
-    const rr = config?.realmId ?
-      await this.prealmapi.getRealm(config.realmId) :
+    const rr = _config?.realmId ?
+      await this?.prealmapi.getRealm(_config.realmId) :
       null;
-    this.isRealm = !!(rr || isRealm === true);
+    this.isRealm = !!(rr || this.isRealm === true);
     return rr;
   }
   loadPlayersFM() {
@@ -218,7 +223,7 @@ class DiscBot {
   }
   xbotAuth() {
     return new Promise((resolve, reject) => {
-      if (!config.xbotToken) {
+      if (!_config.xbotToken) {
         let nokey_error = 'Error: no xbot api key, get one at https://x-bot.live and add to config.json under "xbotToken"';
         console.error(nokey_error);
         reject(nokey_error);
@@ -229,7 +234,7 @@ class DiscBot {
         maxBodyLength: Infinity,
         url: "https://x-bot.live/api/postman/auth?relyingParty=https%3A%2F%2Fpocket.realms.minecraft.net%2F",
         headers: {
-          Authorization: config.xbotToken,
+          Authorization: _config.xbotToken,
         },
       };
       axios(xbotconfig)
@@ -251,14 +256,14 @@ class DiscBot {
     }
   }
   async sendOnlineEmbed() {
-    const fancyStartMSG = fancyMSG(
-      `**${config.worldName}'s chat has been bridged with Discord**`,
+    const fancyStartMSG = PHX.fancyMSG(
+      `**${worldName}'s chat has been bridged with Discord**`,
       "#139dbf",
       "RealmsCord: Phoenix",
       conceptArt
     );
     this.discordClient.channels
-      .fetch(config.channelId)
+      .fetch(_config.channelId)
       .then(async (channel) => {
         if (channel?.type === ChannelType.GuildText) {
           await channel
@@ -506,12 +511,13 @@ class DiscBot {
     }
     // Discord Client Logic
     const discordClient = this.discordClient;
+    console.log(`Logging inti Discord with token: ${discordToken}`);
     discordClient.login(discordToken);
     this.discordClient.on("ready", async () => {
       console.info(
         "RealmsCord: Phoenix - Discord client ready, setting activity..."
       );
-      this.discordClient.user.setActivity(`over ${config.worldName}`, {
+      this.discordClient.user.setActivity(`over ${worldName}`, {
         type: 3,
       });
       console.info(
@@ -530,12 +536,12 @@ class DiscBot {
       const msgAuthor = message?.author?.username ?? "";
       try {
         // Stop early if the message isn't in our bot channel
-        if (message.channel.id !== config.channelId) {
+        if (message.channel.id !== _config.channelId) {
           return;
         }
         // Make sure it's not a message we just sent, an empty string, undefined, or authorless
         if (!(
-          message.author.id === config.clientId ||
+          message.author.id === _config.clientId ||
           message.content.length === 0 || [null, undefined, ""].includes(msgAuthor)
         )) {
           console.log(
@@ -587,7 +593,7 @@ class DiscBot {
           const fancyResponse = fancyMSG(
             `${cmdResponse}`,
             interaction.user.username,
-            `${config.worldName}`
+            `${worldName}`
           );
           await interaction
             .editReply({
@@ -653,7 +659,7 @@ class DiscBot {
         }
       } else if (commandName === "list") {
         const API = RealmAPI.from(this.flow, "bedrock");
-        const rr = await API.getRealm(config?.realmId);
+        const rr = await API.getRealm(_config?.realmId);
         const usr = interaction.user.username;
         const plrs = rr.players;
         let OP = plrs.filter((e) => {
@@ -802,7 +808,7 @@ class DiscBot {
   }
   async getOnlinePlayerList() {
     const API = RealmAPI.from(this.flow, "bedrock");
-    const rr = await API.getRealm(config?.realmId);
+    const rr = await API.getRealm(_config?.realmId);
     const plrs = rr.players;
     let OP = plrs.filter((e) => {
       return e.online;
@@ -923,7 +929,7 @@ class DiscBot {
                   try {
                     let embedMsg = fancyMSG(nowPlaying, sender, "[TectonixFM]");
                     this.discordClient.channels
-                      .fetch(config.channelId)
+                      .fetch(_config.channelId)
                       .then(async (channel) => {
                         if (channel instanceof TextChannel) {
                           await channel.send({
@@ -1051,7 +1057,7 @@ class DiscBot {
       this.client.queue("text", {
         type: "chat",
         needs_translation: false,
-        source_name: config?.botName ?? "Tectonix",
+        source_name: _config?.botName ?? "Tectonix",
         xuid: "",
         platform_chat_id: "",
         message: `###signal###(1) ${pName}`,
@@ -1061,7 +1067,7 @@ class DiscBot {
       this.client.queue("text", {
         type: "chat",
         needs_translation: false,
-        source_name: config?.botName ?? "Tectonix",
+        source_name: _config?.botName ?? "Tectonix",
         xuid: "",
         platform_chat_id: "",
         message: `###signal###(2) ${pName}`,
@@ -1132,7 +1138,7 @@ class DiscBot {
         try {
           let embedMsg = fancyMSG(rr, sender, "Tectonix [Pan]");
           this.discordClient.channels
-            .fetch(config.channelId)
+            .fetch(_config.channelId)
             .then((channel) => {
               // Check if the channel is a TextChannel, DMChannel, or NewsChannel
               if (channel instanceof TextChannel ||
@@ -1165,7 +1171,7 @@ class DiscBot {
             "Tectonix [Pan]"
           );
           this.discordClient.channels
-            .fetch(config.channelId)
+            .fetch(_config.channelId)
             .then((channel) => {
               if (channel instanceof TextChannel ||
                 channel instanceof DMChannel ||
@@ -1214,7 +1220,7 @@ class DiscBot {
         em_img
       );
       await this.discordClient.channels
-        .fetch(config.channelId)
+        .fetch(_config.channelId)
         .then((channel) => {
           if (channel instanceof TextChannel ||
             channel instanceof DMChannel ||
@@ -1305,7 +1311,7 @@ class DiscBot {
       console.log(formattedString);
       let embedMsg = fancyMSG(formattedString, deadPlayer);
       await this.discordClient.channels
-        .fetch(config.channelId)
+        .fetch(_config.channelId)
         .then((channel) => {
           if (channel instanceof TextChannel ||
             channel instanceof DMChannel ||
@@ -1521,11 +1527,11 @@ class DiscBot {
     try {
       let msgColor = !!wasJoin ? "#10EE20" : "#DD1010";
       let action = !!wasJoin ? "connected to" : "disconnected from";
-      let joinMessage = `${pName} has ${action} ${config.worldName}`;
+      let joinMessage = `${pName} has ${action} ${worldName}`;
       let embedMsg = fancyMSG(joinMessage, msgColor);
       console.log(green(joinMessage));
       await this.discordClient.channels
-        .fetch(config.channelId)
+        .fetch(_config.channelId)
         .then(async (channel) => {
           if (channel instanceof TextChannel) {
             await channel.send({
@@ -1612,7 +1618,7 @@ class DiscBot {
         messageColor
       );
       await this.discordClient.channels
-        .fetch(config.channelId)
+        .fetch(_config.channelId)
         .then(async (channel) => {
           if (channel instanceof TextChannel) {
             await channel.send({
@@ -1648,7 +1654,7 @@ class DiscBot {
         );
         return;
       }
-      let bot_name = config?.botName ?? this.client.username;
+      let bot_name = _config?.botName ?? this.client.username;
       if (![null, undefined, ""].includes(this.client?.username)) {
         bot_name = this.client.username;
       }
@@ -1703,7 +1709,7 @@ class DiscBot {
         return;
       }
       POP(`Attempting to send command: `, command, `to the MC connection...`);
-      let bot_name = config?.botName ?? this.client.username;
+      let bot_name = _config?.botName ?? this.client.username;
       this.client.queue("text", {
         type: "chat",
         needs_translation: false,
