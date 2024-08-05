@@ -1,6 +1,9 @@
 process.env.DEBUG = 'minecraft-protocol'
 const bedrock = require("bedrock-protocol");
 const {
+  playerDied
+} = require("./translate");
+const {
   readFileSync,
   existsSync,
   writeFileSync
@@ -42,6 +45,9 @@ const {
   green,
   conceptArt,
   removeEntryByParam,
+  findFirstMatch,
+  welcomeMessage,
+  purple,
 } = require("./utils");
 const _config = JSON.parse(readFileSync("./config.json").toString());
 const discordToken = _config.token;
@@ -193,6 +199,9 @@ class DiscBot {
     // Additional logic for when the connection is lost
   }
 
+  /**
+   * @param {{ source_name: any; type: any; message: string | any[]; parameters: any; parameters_length: any; }} packet
+   */
   handleTextPacket(packet) {
     if (packet?.source_name === this.client.username) {
       return;
@@ -299,6 +308,10 @@ class DiscBot {
     });
   }
 
+  /**
+   * @param {any} sender
+   * @param {string} txt
+   */
   async getPan(sender, txt) {
     if (openai == null) {
       console.log("Pan is unavailable");
@@ -327,6 +340,9 @@ class DiscBot {
   }
 
 
+  /**
+   * @param {{ records: { type: string; records_count: any; records: any[]; }; }} packet
+   */
   async handlePlayerListPacket(packet) {
     try {
       let wasJoin = packet.records.type === "add";
@@ -394,13 +410,124 @@ class DiscBot {
   }
 
   async sendStartupMessage() {
-    // Implementation for sending a startup message
+    console.log(
+      green(
+        "Connection is (hopefully) ready! Attempting to send welcome message..."
+      )
+    );
+    try {
+      this.broadcast(welcomeMessage, this.client.username);
+    } catch (e) {
+      console.log(red(`Caught an error: ${e}`));
+      console.log(
+        orange("Handling error: Waiting 10 seconds and trying again...")
+      );
+      setTimeout(() => {
+        this.sendStartupMessage();
+      }, 10000);
+    }
   }
 
-  handleTranslation(message, paramsLength, params, packet) {
-    // Implementation for handling translation packets
+
+  /**
+   * @param {string} rawMessage
+   * @param {any} packet
+   */
+  async handleTranslation(rawMessage, paramLength = 0, params = [], packet) {
+    // TODO: Implementation
+    try {
+      let action;
+      switch (findFirstMatch(rawMessage)) {
+        case 0: // Sleeping
+        case 1: // Changing skins
+          action = "Ignored";
+          break;
+        case 2: // Leave event
+          console.log(
+            "leave event " + rawMessage + (paramLength > 0 ? params : "")
+          );
+          action = "Leave";
+          break;
+        case 3: // Join event
+          action = "Join";
+          console.log(
+            purple("join event " + rawMessage + (paramLength > 0 ? params : ""))
+          );
+          break;
+        case 4: // Death event
+          console.log(
+            "death event " + rawMessage + (paramLength > 0 ? params : "")
+          );
+          await this.onPlayerDeath(packet);
+          break;
+        default: // No match
+          action = "Unhandled";
+      }
+      console.log(`handleTranslation event: on${action}`);
+    } catch (e) {
+      console.log(red(`Unexpected error in DiscBot.handleTranslation: ${e}`));
+    }
   }
 
+
+  /**
+   * @param {{ message: any; parameters: string | any[]; xuid: any; }} packet
+   */
+  async onPlayerDeath(packet) {
+    try {
+      const rawEvent = packet.message;
+      let deadPlayer = "unknown player";
+      if (packet.parameters) {
+        deadPlayer = packet.parameters[0];
+      }
+      let killer = "";
+      if (packet.parameters.length > 1) {
+        killer = packet.parameters[packet.parameters.length - 1];
+      }
+      console.log(
+        `Death message: ${packet.message}  deadPlayer: <${deadPlayer}> xuid (${packet.xuid})`
+      );
+      console.log(
+        `Parameters: ${Object.keys(packet?.parameters ?? []).join(
+          " "
+        )}, ${JSON.stringify(packet?.parameters ?? {})}`
+      );
+      let deathArgs = {
+        player: deadPlayer,
+        cause: rawEvent,
+        killer: killer,
+      };
+      let formattedString = playerDied(deathArgs);
+      console.log(formattedString);
+      let embedMsg = PHX.fancyMSG(formattedString, deadPlayer);
+      await this.discordClient.channels
+        .fetch(_config.channelId)
+        .then((channel) => {
+          if (channel instanceof TextChannel ||
+            channel instanceof DMChannel ||
+            channel instanceof NewsChannel) {
+            channel
+              .send({
+                embeds: [embedMsg]
+              })
+              .catch((error) => console.error("Error sending message:", error));
+          } else {
+            console.error("Fetched channel is not a text-based channel.");
+          }
+        })
+        .catch((error) => {
+          console.error(error);
+        });
+    } catch (e) {
+      console.log(`Error handling player death: ${e.message}`);
+    }
+  }
+
+
+  /**
+   * @param {any} sourceName
+   * @param {string} message
+   */
   handleCommand(sourceName, message) {
     // Implementation for handling commands
   }
@@ -409,6 +536,9 @@ class DiscBot {
     // Implementation for handling Minecraft messages
   }
 
+  /**
+   * @param {{ content: any; author: { username: string; }; }} message
+   */
   async handleDiscordMessage(message) {
     console.log("Debug: handleDiscordMessage", message.content);
     try {
@@ -439,6 +569,9 @@ class DiscBot {
     }
   }
 
+  /**
+   * @param {string} command
+   */
   dispatchCommand(command) {
     try {
       if (!(this.connectionReady)) {
@@ -468,6 +601,9 @@ class DiscBot {
     }
   }
 
+  /**
+   * @param {any} playerName
+   */
   async addToWhitelist(playerName) {
     let outcomeString;
     let operationResult = await this._addWL(playerName);
@@ -487,6 +623,9 @@ class DiscBot {
     return outcomeString;
   }
 
+  /**
+   * @param {any} playerName
+   */
   async removeFromWhitelist(playerName) {
     let operationResult = await this._removeWL(playerName);
     let outcomeString;
@@ -506,6 +645,9 @@ class DiscBot {
     return outcomeString;
   }
 
+  /**
+   * @param {{ entity_unique_id: { toString: () => any; }; platform_chat_id: any; is_teacher: any; is_host: any; skin_data: any; build_platform: { toString: () => any; }; uuid: string | number; }} record
+   */
   async addPlayer(record) {
     try {
       record.entity_unique_id = record.entity_unique_id.toString();
@@ -523,6 +665,9 @@ class DiscBot {
     }
   }
 
+  /**
+   * @param {string | number} pName
+   */
   async getPlayerByUsername(pName) {
     let correlation = {};
     console.log(`getPlayerByUsername: Searched for "${pName}"`);
@@ -543,6 +688,9 @@ class DiscBot {
     }
   }
 
+  /**
+   * @param {any} PXUID
+   */
   getPlayerByXuid(PXUID) {
     const pXUID = `${PXUID}`;
     let correlation = {};
@@ -557,6 +705,9 @@ class DiscBot {
     }
   }
 
+  /**
+   * @param {any} pName
+   */
   async handleJoinLeave(pName, wasJoin = true) {
     try {
       let plr = await this.getPlayerByUsername(pName);
@@ -617,6 +768,9 @@ class DiscBot {
 
   fmHandler() { }
 
+  /**
+   * @param {string} codeOutput
+   */
   async sendCodeResult(codeOutput, sender = null) {
     console.log("SendCodeResult: ", codeOutput, sender);
     try {
@@ -672,6 +826,10 @@ class DiscBot {
     }
   }
 
+  /**
+   * @param {string | ArrayLike<any> | Iterable<any>} messageEvent
+   * @param {any} msgAuthor
+   */
   async broadcast(messageEvent, msgAuthor) {
     if (!this.connectionReady) {
       console.log(
@@ -744,6 +902,9 @@ class DiscBot {
     broadcastNextMessage();
   }
 
+  /**
+   * @param {any} playerName
+   */
   async _removeWL(playerName) {
     let player = await this.getPlayerByUsername(playerName);
     let wlist = this.whitelist;
@@ -770,6 +931,9 @@ class DiscBot {
     }
   }
 
+  /**
+   * @param {any} playerName
+   */
   async _addWL(playerName) {
     let player = await this.getPlayerByUsername(playerName);
     let wlist = this.whitelist;

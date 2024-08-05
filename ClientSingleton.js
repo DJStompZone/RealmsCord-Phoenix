@@ -38,9 +38,10 @@ class ClientSingleton extends EventEmitter {
           });
           this.client = c;
           this.setupClientListeners(c);
+          console.log("Game client created successfully.");
           resolve(c);
         } catch (e) {
-          console.error(e);
+          console.error("Error creating game client:", e);
           reject(e.message);
         }
       }, 60000); // 1 minute delay
