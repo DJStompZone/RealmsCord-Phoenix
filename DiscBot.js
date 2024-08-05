@@ -75,6 +75,12 @@ class DiscBot {
     this.reset();
     this.isRealm = null;
     this.connectionReady = false;
+    this.messageQueue = [];
+    /**
+     * @type {{ name: any; lastfm: any; }[]}
+     */
+    this.fmplayers = [];
+    this.client = null;
   }
   reset() {
     /**
@@ -471,25 +477,17 @@ class DiscBot {
               }
             }
           );
-          _client.on("disconnect", async () => {
-            console.log("Got disconnect packet");
-            try {
-              setTimeout(async () => {
-                const processNameOrId = "phoenix";
-                restart(processNameOrId, (err, proc) => {
-                  if (err) {
-                    console.error(`Failed to restart process: ${err}`);
-                  } else {
-                    console.log(`Process restarted: ${JSON.stringify(proc)}`);
-                  }
-                });
-                this.reset();
-              }, 10000);
-            } catch (e) {
-              console.log(
-                `Unexpected error in DiscBot disconnect packet event handler: ${e}`
-              );
-            }
+          _client.on('connect', client => {
+            client.on('join', () => {
+              this.connectionReady = true;
+              console.log("Client has joined the server. Connection is now ready.");
+              this.onConnectionReady();
+            });
+
+            _client.on('disconnect', () => {
+              this.connectionReady = false;
+              console.log("Client has disconnected from the server. Connection is no longer ready.");
+            });
           });
           _client.on(
             "packet",
@@ -1641,56 +1639,48 @@ class DiscBot {
     }
   }
 
-  // Dispatch messages to the game chat
   /**
  * @param {string | Iterable<any> | ArrayLike<any>} messageEvent
  * @param {string} [msgAuthor]
  */
   async broadcast(messageEvent, msgAuthor) {
-    let outputMessage = "";
-    try {
-      if (!this.connectionReady) {
-        console.log(
-          red(
-            `Tried to broadcast to the realm/server before it was ready. \nCanceling message: ${messageEvent}`
-          )
-        );
-        return;
-      }
+    if (!this.connectionReady) {
+      console.log(
+        `Tried to broadcast to the realm/server before it was ready. \nCanceling message: ${messageEvent}`
+      );
+      this.messageQueue.push({ messageEvent, msgAuthor });
+      return;
+    }
 
-      let bot_name = _config?.botName ?? this.client.username;
-      if (![null, undefined, ""].includes(this.client?.username)) {
-        bot_name = this.client.username;
-      }
+    let dt = new Date();
+    let author = `[Discord] ${dt.toLocaleDateString().slice(0, 5)}${dt
+      .toLocaleDateString()
+      .slice(7, 9)} ${dt
+        .toTimeString()
+        .split(" ")[0]
+        .split(":")
+        .join(".")
+        .replace(".", ":")}`;
 
-      let dt = new Date();
-      let author = `[Discord] ${dt.toLocaleDateString().slice(0, 5)}${dt
-        .toLocaleDateString()
-        .slice(7, 9)} ${dt
-          .toTimeString()
-          .split(" ")[0]
-          .split(":")
-          .join(".")
-          .replace(".", ":")}`;
+    if (msgAuthor && msgAuthor !== this.client.username) {
+      author += ` <${msgAuthor}>`;
+    } else {
+      author = " ";
+    }
 
-      if (msgAuthor && msgAuthor !== this.client.username) {
-        author += ` <${msgAuthor}>`;
+    let msgOutput = "";
+    for (let ea of Array.from(messageEvent)) {
+      if (ea.match(/[a-z]/i)) {
+        msgOutput += String.fromCharCode(ea.charCodeAt(0) + chatOffset);
       } else {
-        author = " ";
+        msgOutput += ea;
       }
+    }
 
-      let msgOutput = "";
-      for (let ea of Array.from(messageEvent)) {
-        if (ea.match(/[a-z]/i)) {
-          msgOutput += String.fromCharCode(ea.charCodeAt(0) + chatOffset);
-        } else {
-          msgOutput += ea;
-        }
-      }
+    let outputMessage = [author, msgOutput].join(" ");
+    console.log("Broadcasting message:", outputMessage);
 
-      outputMessage = [author, msgOutput].join(" ");
-      console.log("Broadcasting message:", outputMessage);
-
+    try {
       this.client.queue("text", {
         type: "chat",
         needs_translation: false,
@@ -1705,6 +1695,27 @@ class DiscBot {
       console.error("Error broadcasting message:", error);
     }
   }
+  
+  /**
+   * Call this method when the connection is ready
+   */
+  onConnectionReady() {
+    console.log("Connection is now ready. Broadcasting queued messages...");
+
+    const broadcastNextMessage = () => {
+      if (this.messageQueue.length > 0) {
+        const { messageEvent, msgAuthor } = this.messageQueue.shift();
+        this.broadcast(messageEvent, msgAuthor);
+
+        // Set a delay before broadcasting the next message
+        setTimeout(broadcastNextMessage, 1000); // 1000ms delay (1 second)
+      }
+    };
+
+    // Start broadcasting messages with a delay
+    broadcastNextMessage();
+  }
+
   /**
    * @param {string | import("discord.js").CommandInteractionOption<import("discord.js").CacheType>} command
    */
@@ -1719,7 +1730,11 @@ class DiscBot {
         return;
       }
       POP(`Attempting to send command: `, command, `to the MC connection...`);
-      let bot_name = _config?.botName ?? this.client.username;
+      let bot_name = _config?.botName ?? this?.client?.username;
+      if (!bot_name) {
+        console.error("Bot name not found. Using default name: RealmsCord Phoenix");
+        bot_name = "RealmsCord Phoenix"
+      }
       this.client.queue("text", {
         type: "chat",
         needs_translation: false,
