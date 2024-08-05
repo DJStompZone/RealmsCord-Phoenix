@@ -3,7 +3,7 @@ const { format } = require("util");
 const { EmbedBuilder, version } = require("discord.js");
 console.log(`Using discord.js version ${version}`);
 const { commandRegistry, stringToColor } = require("./utils");
-const { DiscBot } = require("DiscBot");
+const { DiscBot } = require("./DiscBot");
 const { Configuration, OpenAIApi } = require("openai");
 const curve = 'secp384r1';
 const config = JSON.parse(readFileSync("./config.json").toString());
