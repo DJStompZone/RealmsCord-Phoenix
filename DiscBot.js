@@ -1584,11 +1584,12 @@ class DiscBot {
   fmHandler() { }
 
   /**
-   * @param {string} codeOutput
-   */
+ * @param {string} codeOutput
+ */
   async sendCodeResult(codeOutput, sender = null) {
     console.log("SendCodeResult: ", codeOutput, sender);
     try {
+      console.log("Queueing message to Minecraft client...");
       this.client.queue("text", {
         type: "chat",
         needs_translation: false,
@@ -1597,8 +1598,9 @@ class DiscBot {
         platform_chat_id: "",
         message: codeOutput,
       });
+      console.log("Message queued to Minecraft client.");
     } catch (error) {
-      console.log(error);
+      console.log("Error queueing message to Minecraft client:", error);
       this.client.queue("text", {
         type: "chat",
         needs_translation: false,
@@ -1608,6 +1610,7 @@ class DiscBot {
         message: `An error occurred: ${error}`,
       });
     }
+
     try {
       let messageColor = codeOutput.includes("error") ? "#dd0000" : "#00dd00";
       let embedMsg = fancyMSG(
@@ -1616,36 +1619,37 @@ class DiscBot {
         "Code Output",
         messageColor
       );
+      console.log("Fetching Discord channel...");
       await this.discordClient.channels
         .fetch(_config.channelId)
         .then(async (channel) => {
           if (channel instanceof TextChannel) {
+            console.log("Sending message to Discord channel...");
             await channel.send({
               embeds: [embedMsg],
             });
+            console.log("Message sent to Discord channel.");
           } else {
-            console.error(
-              "Fetched channel is not a text channel."
-            );
+            console.error("Fetched channel is not a text channel.");
           }
         })
         .catch((error) => {
-          console.error(error);
+          console.error("Error fetching Discord channel:", error);
         });
     } catch (error) {
-      console.log(error);
+      console.log("Error sending message to Discord:", error);
     }
   }
 
   // Dispatch messages to the game chat
   /**
-   * @param {string | Iterable<any> | ArrayLike<any>} messageEvent
-   * @param {string} [msgAuthor]
-   */
+ * @param {string | Iterable<any> | ArrayLike<any>} messageEvent
+ * @param {string} [msgAuthor]
+ */
   async broadcast(messageEvent, msgAuthor) {
     let outputMessage = "";
     try {
-      if (!(this.connectionReady)) {
+      if (!this.connectionReady) {
         console.log(
           red(
             `Tried to broadcast to the realm/server before it was ready. \nCanceling message: ${messageEvent}`
@@ -1653,12 +1657,14 @@ class DiscBot {
         );
         return;
       }
+
       let bot_name = _config?.botName ?? this.client.username;
       if (![null, undefined, ""].includes(this.client?.username)) {
         bot_name = this.client.username;
       }
+
       let dt = new Date();
-      let author = `\[Discord\]\ ${dt.toLocaleDateString().slice(0, 5)}${dt
+      let author = `[Discord] ${dt.toLocaleDateString().slice(0, 5)}${dt
         .toLocaleDateString()
         .slice(7, 9)} ${dt
           .toTimeString()
@@ -1666,11 +1672,13 @@ class DiscBot {
           .split(":")
           .join(".")
           .replace(".", ":")}`;
-      if (msgAuthor != "" && msgAuthor != this.client.username) {
-        author += `\ <${msgAuthor}>`;
+
+      if (msgAuthor && msgAuthor !== this.client.username) {
+        author += ` <${msgAuthor}>`;
       } else {
         author = " ";
       }
+
       let msgOutput = "";
       for (let ea of Array.from(messageEvent)) {
         if (ea.match(/[a-z]/i)) {
@@ -1679,7 +1687,10 @@ class DiscBot {
           msgOutput += ea;
         }
       }
+
       outputMessage = [author, msgOutput].join(" ");
+      console.log("Broadcasting message:", outputMessage);
+
       this.client.queue("text", {
         type: "chat",
         needs_translation: false,
@@ -1688,10 +1699,10 @@ class DiscBot {
         platform_chat_id: "",
         message: outputMessage,
       });
-    } catch (e) {
-      console.log(
-        red(`Unexpected error in DiscBot.broadcast: ${e} ` + outputMessage)
-      );
+
+      console.log("Message queued to Minecraft client.");
+    } catch (error) {
+      console.error("Error broadcasting message:", error);
     }
   }
   /**
